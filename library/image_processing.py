@@ -32,7 +32,7 @@ def load_volume(file, verbose=False):
     t1 = pf()
 
     # Only use .nii files for annotations, this is mainly due to loading speeds
-    if helpers.get_ext(file) == ".nii":
+    if helpers.get_ext(file) == ".nii" or helpers.get_ext(file) == ".gz":
         try:
             volume = load_nii_volume(file)
         except Exception as error:

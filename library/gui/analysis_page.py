@@ -981,7 +981,7 @@ class FileLoader(QDialog):
         return
 
     def load_volumes(self):
-        file_filter = "Images (*.nii *.png *.bmp *.tif *.tiff *.jpg *.jpeg)"
+        file_filter = "Images (*.nii *.gz *.png *.bmp *.tif *.tiff *.jpg *.jpeg)"
         files = self.init_dialog(file_filter, "Load volume files")
         if files:
             self.column1_files += files
@@ -992,7 +992,7 @@ class FileLoader(QDialog):
     def load_annotations(self):
         files = None
         if self.annotation == "ID":
-            file_filter = "Images (*.nii)"
+            file_filter = "Images (*.nii *.gz)"
             files = self.init_dialog(file_filter, "Load .nii annotation volumes")
         else:
             folder = self.init_dir_dialog()

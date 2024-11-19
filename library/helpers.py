@@ -137,7 +137,7 @@ def set_results_dir():
 
 def load_volumes():
     message = "Load volume files"
-    file_filter = "Images (*.nii *.png *.bmp *.tif *.tiff *.jpg *.jpeg)"
+    file_filter = "Images (*.nii *.gz *.png *.bmp *.tif *.tiff *.jpg *.jpeg)"
     files = QFileDialog.getOpenFileNames(
         QFileDialog(), message, get_dir("Desktop"), file_filter
     )[0]
@@ -159,7 +159,7 @@ def load_graphs(graph_format):
 
 def load_volume():
     message = "Load volume file"
-    file_filter = "Images (*.nii *.png *.bmp *.tif *.tiff *.jpg *.jpeg)"
+    file_filter = "Images (*.nii *.gz *.png *.bmp *.tif *.tiff *.jpg *.jpeg)"
     file = QFileDialog.getOpenFileName(
         QFileDialog(), message, get_dir("Desktop"), file_filter
     )[0]
@@ -178,8 +178,8 @@ def load_graph(graph_format):
 
 
 def load_nii_annotation():
-    message = "Load '.nii' file"
-    file_filter = "nii (*.nii)"
+    message = "Load '.nii'*.gz file"
+    file_filter = "nii (*.nii) *.gz"
     file = QFileDialog.getOpenFileName(
         QFileDialog(), message, get_dir("Desktop"), file_filter
     )[0]
