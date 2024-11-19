@@ -13,6 +13,8 @@ import os
 import time
 
 import igraph as ig
+from tqdm import tqdm
+from multiprocessing import Pool, cpu_count
 
 from library import (
     feature_extraction as FeatExt,
@@ -123,9 +125,7 @@ def process_graph(file_path, gen_options, graph_options, vis_options, verbose):
 
 
 # Process raw segmented volumes
-def process_volume(
-    volume_file, gen_options, ann_options, vis_options, iteration, verbose
-):
+def process_volume(volume_file, gen_options, ann_options, vis_options, iteration, verbose):
     filename = ImProc.get_filename(volume_file)
     if verbose:
         tic = time.perf_counter()
@@ -198,9 +198,7 @@ def process_volume(
 
             # Make sure the ROI is in the volume.
             if not roi_volume or not ImProc.segmentation_check(volume):
-                ResExp.cache_result(
-                    [filename, roi_name, "ROI not in dataset."]
-                )  # Cache results
+                ResExp.cache_result([filename, roi_name, "ROI not in dataset."])  # Cache results
                 if verbose:
                     print("ROI Not in dataset.")
                 continue
@@ -227,9 +225,7 @@ def process_volume(
         # Now, we can treat 2D arrays as 3D arrays for compatibility
         # with the rest of our pipeline.
         if volume.ndim == 2:
-            points, volume, volume_shape = ImProc.reshape_2D(
-                points, volume, verbose=verbose
-            )
+            points, volume, volume_shape = ImProc.reshape_2D(points, volume, verbose=verbose)
         else:
             volume_shape = volume.shape
 
@@ -251,15 +247,11 @@ def process_volume(
 
         if gen_options.prune_length > 0:
             # Prune connected endpoint segments based on a user-defined length
-            GProc.prune_input(
-                graph, gen_options.prune_length, resolution, verbose=verbose
-            )
+            GProc.prune_input(graph, gen_options.prune_length, resolution, verbose=verbose)
 
         # Filter isolated segments that are shorter than defined length
         # If visualizing the dataset, filter these from the volume as well.
-        GProc.filter_input(
-            graph, gen_options.filter_length, resolution, verbose=verbose
-        )
+        GProc.filter_input(graph, gen_options.filter_length, resolution, verbose=verbose)
 
         # endregion
         ## Analysis.
@@ -279,10 +271,10 @@ def process_volume(
         ResExp.cache_result(result)  # Cache results
 
         if gen_options.save_seg_results:
-            ResExp.write_seg_results(seg_results, results_folder, filename, roi_name)
+            ResExp.write_seg_results(seg_results, gen_options.results_folder, filename, roi_name)
 
         if gen_options.save_graph and not vis_options.visualize:
-            GIO.save_graph(graph, filename, results_folder, verbose=verbose)
+            GIO.save_graph(graph, filename, gen_options.results_folder, verbose=verbose)
 
         if roi_name != "None":
             graph.es["hex"] = [annotation_data[roi_name]["colors"][0]]
@@ -314,16 +306,18 @@ def process_volume(
             if volume.ndim == 2:
                 _, volume, _ = ImProc.reshape_2D(points, volume, verbose=verbose)
 
-        VolVis.mesh_construction(
-            g_main, vis_options, volume, iteration=iteration, verbose=verbose
-        )
+        VolVis.mesh_construction(g_main, vis_options, volume, iteration=iteration, verbose=verbose)
 
-    ResExp.write_results(results_folder, gen_options.image_dimensions)
+    # ResExp.write_results(gen_options.results_folder, gen_options.image_dimensions)
 
     # Make sure we delete the labeled_cache_volume if it exists
     ImProc.clear_labeled_cache()
     return
 
+# Define worker function for parallel processing
+def process_file(args):
+    file_path, gen_options, no_anno, vis_options, iteration, verbose = args
+    process_volume(file_path, gen_options, no_anno, vis_options, iteration, verbose)
 
 if __name__ == "__main__":
     compiler_file = os.path.join(
@@ -371,16 +365,14 @@ if __name__ == "__main__":
     ######################
     # region
     # Filepath to the annotation. RGB series folder OR .nii Allen brain atlas file
-    annotation_file = "ANNOTATION_VOLUME_FILE.nii"
+    annotation_file = ""
 
     atlas = "library/annotations/annotation_trees/p56 Mouse Brain.json"
     annotation_type = "ID"  # 'RGB' or 'ID'
 
     annotation_regions = ["Dentate gyrus, molecular layer"]
 
-    annotation_options = IC.AnnotationOptions(
-        annotation_file, atlas, annotation_type, annotation_regions
-    )
+    anno_options = IC.AnnotationOptions(annotation_file, atlas, annotation_type, annotation_regions)
 
     # endregion
 
@@ -433,23 +425,23 @@ if __name__ == "__main__":
     #######################
     # region
     # General features
-    resolution = 1  # Single number or [X, Y, Z] format
-    prune_length = 5  # Prune end point segments shorter than prune_length
-    filter_length = 10  # Filter isolated segments shorter than filter_length
+    resolution = [3,12,12]  # Single number or [X, Y, Z] format
+    prune_length = 75  # Prune end point segments shorter than prune_length
+    filter_length = 150  # Filter isolated segments shorter than filter_length
     image_dimensions = 3  # 2 or 3. Affects features extraction. 2D datasets can be treated as if they were 3D.
 
     # Results/graph export
     save_segment_results = False  # Save individual segment features to csv file
     results_folder = "Results/Path/Here"
-    save_graph = False  # Save reduced graph export?
-    verbose = True
+    save_graph = True  # Save reduced graph export?
+    verbose = False
 
     gen_options = IC.AnalysisOptions(
         results_folder,
         resolution,
         prune_length,
         filter_length,
-        150,
+        12*20,
         save_segment_results,
         save_graph,
         image_dimensions,
@@ -460,18 +452,31 @@ if __name__ == "__main__":
     ### RUN THIS FILE ###
     #####################
     # Use this key in place of 'ann_options' if you aren't analyzing annotated datasets.
-    no_annotation = IC.AnnotationOptions(None, None, "None", None)
-    process_volume(compiler_file, gen_options, no_annotation, vis_options, 0, verbose)
+    no_anno = IC.AnnotationOptions(None, None, "None", None)
+    # process_volume(compiler_file, gen_options, no_anno, vis_options, 0, verbose)
 
     ######################
     ### Run files here ###
     ######################
-    file1 = "VOLUME_FILE.nii"
-
+    SEG_DIR = r"Segmentation/Directory/Here"
+    files =[os.path.join(SEG_DIR, f) for f in os.listdir(SEG_DIR) if f.endswith(".nii.gz")]
+    
     iteration = 0
 
-    # Use "no_anno" in place of "anno_options" if there are no annotations
-    process_volume(file1, gen_options, no_annotation, vis_options, iteration, verbose)
+    # # Use "no_anno" in place of "anno_options" if there are no annotations
+    # for file1 in tqdm(files):
+    #     process_volume(file1, gen_options, no_anno, vis_options, iteration, verbose)
+    arg_list = [(f, gen_options, no_anno, vis_options, i, verbose) for i,f in enumerate(files)]
+    # Set up parallel processing
+    num_cores = cpu_count() - 1  # Or specify a number like cpu_count() - 1
+    # with Pool(processes=num_cores) as pool:
+    #     # Process files in parallel with progress bar
+    #     list(tqdm(pool.imap(process_file, arg_list), total=len(files)))
+
+    for arg in tqdm(arg_list):
+        process_file(arg)
+
+
 
     ### Graph files
     # Follow the format below to load csv-based graphs.

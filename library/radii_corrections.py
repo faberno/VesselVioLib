@@ -18,6 +18,7 @@ __download__ = "https://jacobbumgarner.github.io/VesselVio/Downloads"
 
 import os
 from math import sqrt
+from threading import Lock
 
 import numpy as np
 from numba import njit, prange
@@ -53,6 +54,8 @@ def table_generation(resolution=np.array([1, 1, 1]), size=150):
                     LUT[z, y, x] = sqrt(a)
     return LUT
 
+# Add a lock for file operations
+file_lock = Lock()
 
 ###################
 ### LUT Loading ###
@@ -92,8 +95,10 @@ def load_corrections(
 
     else:
         try:
-            # Try loading the file.
-            LUT = np.load(rc_path)
+            with file_lock:  # Use lock to prevent concurrent access
+                # Try loading the file.
+                LUT = np.load(rc_path)
+
             rebuild = False
 
             # Make sure dimensions are also correct.
