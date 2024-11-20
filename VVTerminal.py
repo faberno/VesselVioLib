@@ -432,7 +432,7 @@ if __name__ == "__main__":
 
     # Results/graph export
     save_segment_results = False  # Save individual segment features to csv file
-    results_folder = "Results/Path/Here"
+    results_folder = r"D:\data\CVD\Tuebingen\vessel_preds\preds005\vesselvio"
     save_graph = True  # Save reduced graph export?
     verbose = False
 
@@ -469,12 +469,13 @@ if __name__ == "__main__":
     arg_list = [(f, gen_options, no_anno, vis_options, i, verbose) for i,f in enumerate(files)]
     # Set up parallel processing
     num_cores = cpu_count() - 1  # Or specify a number like cpu_count() - 1
-    # with Pool(processes=num_cores) as pool:
-    #     # Process files in parallel with progress bar
-    #     list(tqdm(pool.imap(process_file, arg_list), total=len(files)))
 
-    for arg in tqdm(arg_list):
-        process_file(arg)
+    with Pool(processes=num_cores) as pool:
+        # Process files in parallel with progress bar
+        list(tqdm(pool.imap(process_file, arg_list), total=len(files)))
+
+    # for arg in tqdm(arg_list):
+    #     process_file(arg)
 
 
 
