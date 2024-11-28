@@ -25,6 +25,7 @@ from library.feature_extraction_more import (
     vessel_tortuosity_features,
     path_length,
     radius_features,
+    layer_thickness_features,
 )
 
 """
@@ -90,6 +91,8 @@ def extract_features(
         largest_voxel_component_size(vol_filtered) * vol_spacing.prod()
     )
     features["fractal_dimension"] = fractal_dimension(vol_filtered)
+
+    features["layer_thickness"] = layer_thickness_features(vol_filtered)
 
     return features
 

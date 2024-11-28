@@ -3,9 +3,10 @@ from typing import Tuple
 import networkx as nx
 import numpy as np
 import matplotlib.pyplot as plt
-from scipy.optimize import minimize_scalar
+from skimage.morphology import remove_small_objects
+from scipy.optimize import minimize_scalar, curve_fit
+from scipy.signal import savgol_filter
 import scipy.ndimage as ndi
-
 
 def fractal_dimension(
     array: np.ndarray,
@@ -220,8 +221,11 @@ def vessel_length_features(G: nx.Graph, large_vessel_radius: float):
     ]
 
     total_vessel_length = sum(vessels)
-    total_small_vessel_length = sum(large_vessels)  # max RadiusAvg is probably the most accurate
-    total_large_vessel_length = sum(small_vessels)
+    vessel_num = len(vessels)
+    total_small_vessel_length = sum(small_vessels)  # max RadiusAvg is probably the most accurate
+    small_vessel_num = len(small_vessels)
+    total_large_vessel_length = sum(large_vessels)
+    large_vessel_num = len(large_vessels)
 
     median_vessel_length = 0 if len(vessels) == 0 else np.median(vessels).item()
     median_large_vessel_length = 0 if len(large_vessels) == 0 else np.median(large_vessels).item()
@@ -229,8 +233,11 @@ def vessel_length_features(G: nx.Graph, large_vessel_radius: float):
 
     return {
         "total_vessel_length": total_vessel_length,
+        "vessel_num":vessel_num,
         "total_large_vessel_length": total_large_vessel_length,
+        "large_vessel_num": large_vessel_num,
         "total_small_vessel_length": total_small_vessel_length,
+        "small_vessel_num": small_vessel_num,
         "median_vessel_length": median_vessel_length,
         "median_large_vessel_length": median_large_vessel_length,
         "median_small_vessel_length": median_small_vessel_length,
@@ -253,13 +260,32 @@ def blood_volume_features(volume: np.ndarray, volume_unfiltered: np.ndarray, spa
         "filtered_out_blood_volume": filtered_out_blood_volume,
     }
 
+def layer_thickness_features(vol:np.ndarray):
+    # mip over short axis
+    vol = remove_small_objects(vol > 0, min_size=10000)
+
+    vol_mip = np.max(vol,axis=1)
+    i_top = np.argmax(vol_mip,axis=0)
+    i_bot = vol_mip.shape[0] - np.argmax(vol_mip[::-1,:],axis=0)
+    window = vol_mip.shape[1]/4
+    if window %2 == 0:
+        window -= 1
+    i_top_smooth = savgol_filter(i_top, window_length=71, polyorder=2)
+    i_bot_smooth = savgol_filter(i_bot, window_length=71, polyorder=2)
+    
+    width = i_bot_smooth - i_top_smooth
+
+    return np.mean(width)
+
 
 def bifurcation_features(G: nx.Graph, image_volume: float):
     """Calculates the number of bifurcations (in total and normalized by the image volume."""
     n_bifurcations = sum(1 for node, degree in G.degree() if degree > 2)
+    nikoletta_j2e = sum(1 for node, degree in G.degree() if degree > 3)
     return {
         "#bifurcations": n_bifurcations,
         "#bifurcations_normalized": n_bifurcations / image_volume,
+        "nikoletta_j2e": nikoletta_j2e,
     }
 
 
