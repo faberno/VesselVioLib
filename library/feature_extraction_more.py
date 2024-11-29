@@ -7,6 +7,8 @@ from skimage.morphology import remove_small_objects
 from scipy.optimize import minimize_scalar, curve_fit
 from scipy.signal import savgol_filter
 import scipy.ndimage as ndi
+from scipy.interpolate import interp1d
+import scipy.ndimage as ndimage
 
 def fractal_dimension(
     array: np.ndarray,
@@ -233,7 +235,7 @@ def vessel_length_features(G: nx.Graph, large_vessel_radius: float):
 
     return {
         "total_vessel_length": total_vessel_length,
-        "vessel_num":vessel_num,
+        "vessel_num": vessel_num,
         "total_large_vessel_length": total_large_vessel_length,
         "large_vessel_num": large_vessel_num,
         "total_small_vessel_length": total_small_vessel_length,
@@ -260,22 +262,160 @@ def blood_volume_features(volume: np.ndarray, volume_unfiltered: np.ndarray, spa
         "filtered_out_blood_volume": filtered_out_blood_volume,
     }
 
-def layer_thickness_features(vol:np.ndarray):
-    # mip over short axis
-    vol = remove_small_objects(vol > 0, min_size=10000)
 
-    vol_mip = np.max(vol,axis=1)
-    i_top = np.argmax(vol_mip,axis=0)
-    i_bot = vol_mip.shape[0] - np.argmax(vol_mip[::-1,:],axis=0)
-    window = vol_mip.shape[1]/4
-    if window %2 == 0:
+def layer_thickness_features_old(vol_in: np.ndarray):
+
+    def func(x, a, c):
+        return a * np.power(x, 2) + c
+
+    # mip over short axis
+    vol = remove_small_objects(vol_in > 0, min_size=3000)
+    # vol = vol_in
+    vol_mip = np.max(vol, axis=1)
+    i_top = np.argmax(vol_mip, axis=0)
+
+    window = vol_mip.shape[1] / 4
+    if window % 2 == 0:
         window -= 1
-    i_top_smooth = savgol_filter(i_top, window_length=71, polyorder=2)
-    i_bot_smooth = savgol_filter(i_bot, window_length=71, polyorder=2)
-    
+
+    i_top_smooth = savgol_filter(i_top, window_length=41, polyorder=2)
+    x = np.arange(len(i_top))
+    params_top, _ = curve_fit(func, x, i_top_smooth, maxfev=10000)
+
+    vol_sum = np.sum(vol, axis=1)  # > 8
+    vol_sum = vol_sum > vol_sum.max() * 0.2
+    i_bot = vol_sum.shape[0] - np.argmax(vol_sum[::-1, :], axis=0)
+
+    data_masked = np.where(i_bot == vol_sum.shape[0], np.nan, i_bot)
+    nans, x = np.isnan(data_masked), lambda z: z.nonzero()[0]
+    interpolator = interp1d(
+        x(~nans), data_masked[~nans], bounds_error=False, fill_value="extrapolate"
+    )
+    data_interpolated = np.where(nans, interpolator(np.arange(len(data_masked))), data_masked)
+    i_bot_smooth = savgol_filter(data_interpolated, window_length=41, polyorder=2)
+
+    x = np.arange(len(i_bot))
+    params_bot, _ = curve_fit(func, x, i_bot_smooth, maxfev=10000)
+
+    # Prepare x-axis (indices)
+    x = np.arange(len(i_top))
+
+    plt.figure(figsize=(12, 6))
+    plt.subplot(1, 2, 1)
+    plt.plot(x, i_top, label="i_top (data)", color="blue")
+    plt.plot(x, func(x, *params_top), label="i_top (fit)", color="orange")
+    plt.plot(x, i_top_smooth, label="smooth", color="green")
+    plt.title("Exponential Fit for i_top")
+    plt.legend()
+
+    plt.subplot(1, 2, 2)
+    plt.plot(x, i_bot, label="i_bot (data)", color="green")
+    plt.plot(x, i_bot_smooth, label="i_bot (smooth)", color="blue")
+    plt.plot(x, func(x, *params_bot), label="i_bot (fit)", color="orange")
+    plt.title("Exponential Fit for i_bot")
+    plt.legend()
+
+    plt.figure()
+    plt.imshow(vol_mip)
+    plt.plot(x, func(x, *params_top), label="i_top (fit)", color="white")
+
+    plt.figure()
+    plt.imshow(vol_sum)
+    plt.plot(x, func(x, *params_bot), label="i_bot (fit)", color="white")
+
     width = i_bot_smooth - i_top_smooth
 
     return np.mean(width)
+
+
+def layer_thickness_features(vol_in: np.ndarray):
+
+    def func(x, a, c):
+        return a * np.power(x, 2) + c
+
+    # mip over short axis
+    vol = remove_small_objects(vol_in > 0, min_size=3000)
+    # vol = vol_in
+    vol_mip = np.max(vol, axis=1)
+    i_top = np.argmax(vol_mip, axis=0)
+
+    window = vol_mip.shape[1] / 4
+    if window % 2 == 0:
+        window -= 1
+
+    i_top_smooth = savgol_filter(i_top, window_length=41, polyorder=2)
+    x = np.arange(len(i_top))
+    params_top, _ = curve_fit(func, x, i_top_smooth, maxfev=10000)
+
+    # # Define a 1D kernel for summing a window of 11 pixels along dim1
+    # kernel = np.ones((1, 22))  # 1 row, 11 columns
+
+    # # Convolve the kernel along dim1 (second axis)
+    # vol_mip_sum = convolve2d(vol_mip, kernel, mode='same', boundary='wrap')>0
+
+    pad_width = 20
+
+    structure = ndimage.generate_binary_structure(2, 2)
+
+    seg_vol = np.pad(vol_mip, pad_width=pad_width, mode="edge")
+    seg_vol = ndimage.binary_closing(seg_vol, structure=structure, iterations=10, border_value=0)
+    seg_vol = ndimage.binary_opening(seg_vol, structure=structure, iterations=10, border_value=0)
+    # seg_vol = ndimage.binary_closing(seg_vol, structure=structure, iterations=5, border_value=0
+    # )
+    vol_sum = seg_vol[pad_width:-pad_width, pad_width:-pad_width]
+
+    i_bot = vol_sum.shape[0] - np.argmax(vol_sum[::-1, :], axis=0)
+
+    data_masked = np.where(i_bot == vol_sum.shape[0], np.nan, i_bot)
+    nans, x = np.isnan(data_masked), lambda z: z.nonzero()[0]
+    interpolator = interp1d(
+        x(~nans), data_masked[~nans], bounds_error=False, fill_value="extrapolate"
+    )
+    data_interpolated = np.where(nans, interpolator(np.arange(len(data_masked))), data_masked)
+    i_bot_smooth = savgol_filter(data_interpolated, window_length=41, polyorder=2)
+
+    x = np.arange(len(i_bot))
+    params_bot, _ = curve_fit(func, x, i_bot_smooth, maxfev=10000)
+
+    # Calculate area between curves
+    def avg_width_between_curves(xs, params_top, params_bot):
+        # Integrate the difference of the two quadratic functions
+        a_top, c_top = params_top
+        a_bot, c_bot = params_bot
+
+        def fun(x):
+            return (a_bot - a_top) * (x**3) / 3 + (c_bot - c_top) * x
+
+        return (fun(xs[-1]) - fun(xs[0])) / len(xs)
+
+    x = np.arange(len(i_top))
+    width = avg_width_between_curves(x, params_top, params_bot)
+
+    # plt.figure(figsize=(12, 6))
+    # plt.subplot(1, 2, 1)
+    # plt.plot(x, i_top, label="i_top (data)", color="blue")
+    # plt.plot(x, func(x, *params_top), label="i_top (fit)", color="orange")
+    # plt.plot(x, i_top_smooth, label="smooth", color="green")
+    # plt.title("Exponential Fit for i_top")
+    # plt.legend()
+
+    # plt.subplot(1, 2, 2)
+    # plt.plot(x, i_bot, label="i_bot (data)", color="green")
+    # plt.plot(x, i_bot_smooth, label="i_bot (smooth)", color="blue")
+    # plt.plot(x, func(x, *params_bot), label="i_bot (fit)", color="orange")
+    # plt.title("Exponential Fit for i_bot")
+    # plt.legend()
+
+    # plt.figure()
+    # plt.imshow(vol_mip)
+    # plt.plot(x, func(x, *params_top), label="i_top (fit)", color="white")
+    # plt.plot(x, func(x, *params_bot), label="i_bot (fit)", color="white")
+
+    # plt.figure()
+    # plt.imshow(vol_sum)
+    # plt.plot(x, func(x, *params_bot), label="i_bot (fit)", color="white")
+
+    return width
 
 
 def bifurcation_features(G: nx.Graph, image_volume: float):

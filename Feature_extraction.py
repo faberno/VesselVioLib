@@ -6,8 +6,7 @@ import numpy as np
 import pandas as pd
 from skimage.morphology import remove_small_objects
 import os
-from concurrent.futures import ThreadPoolExecutor
-from multiprocessing import cpu_count
+from multiprocessing import Pool
 
 from functools import partial
 from library.feature_extraction_more import (
@@ -92,7 +91,7 @@ def extract_features(
     )
     features["fractal_dimension"] = fractal_dimension(vol_filtered)
 
-    features["layer_thickness"] = layer_thickness_features(vol_filtered)
+    features["layer_thickness"] = layer_thickness_features(vol)
 
     return features
 
@@ -116,23 +115,27 @@ def process_single_graph(graph, graphs_dir, seg_dir):
 GRAPHS = r"GRAPHS/PATH"
 SEGMENTATIONS = r"SEGMENTATIONS/PATH"
 
+if __name__ == "__main__":
 
-feature_list = []
-graphs = [f for f in os.listdir(GRAPHS) if f.endswith(".graphml")]
+    feature_list = []
+    graphs = [f for f in os.listdir(GRAPHS) if f.endswith(".graphml")]
 
-# Create a partial function with the fixed arguments
-process_func = partial(process_single_graph, graphs_dir=GRAPHS, seg_dir=SEGMENTATIONS)
-num_cores = cpu_count()  # Or specify a number like cpu_count() - 1
+    # Create a partial function with the fixed arguments
+    process_func = partial(process_single_graph, graphs_dir=GRAPHS, seg_dir=SEGMENTATIONS)
+    # num_cores = cpu_count()  # Or specify a number like cpu_count() - 1
 
-with ThreadPoolExecutor(max_workers=num_cores) as executor:
-    results = list(tqdm(executor.map(process_func, graphs), total=len(graphs)))
+    # with ThreadPoolExecutor(max_workers=num_cores) as executor:
+    #     results = list(tqdm(executor.map(process_func, graphs), total=len(graphs)))
 
-# results = []
-# for g in tqdm(graphs):
-#     results.append(process_func(g))
+    with Pool() as p:
+        results = list(tqdm(p.imap(process_func, graphs), total=len(graphs)))
 
-feature_list.extend(results)
+    # results = []
+    # for g in tqdm(graphs):
+    #     results.append(process_func(g))
+
+    feature_list.extend(results)
 
 
-df = pd.DataFrame(feature_list)
-df.to_csv(os.path.join(GRAPHS, "features.csv"))
+    df = pd.DataFrame(feature_list)
+    df.to_csv(os.path.join(GRAPHS, "vesselvio_features.csv"))
