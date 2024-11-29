@@ -75,7 +75,7 @@ def extract_features(
 
     features["medBifExponent"] = median_bifurcation_exponent(G)
     features.update(vessel_length_features(G, large_vessel_radius))
-    features.update(bifurcation_features(G, total_volume))
+    features.update(bifurcation_features(G, total_volume, vol_filtered))
     features.update(blood_volume_features(vol_filtered, vol, vol_spacing))
     features.update(graph_metric_features(G))
 

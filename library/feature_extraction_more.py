@@ -9,6 +9,9 @@ from scipy.signal import savgol_filter
 import scipy.ndimage as ndi
 from scipy.interpolate import interp1d
 import scipy.ndimage as ndimage
+import skan 
+from skimage.morphology import skeletonize
+
 
 def fractal_dimension(
     array: np.ndarray,
@@ -414,18 +417,30 @@ def layer_thickness_features(vol_in: np.ndarray):
     # plt.figure()
     # plt.imshow(vol_sum)
     # plt.plot(x, func(x, *params_bot), label="i_bot (fit)", color="white")
+    # plt.show()
 
     return width
 
 
-def bifurcation_features(G: nx.Graph, image_volume: float):
+def bifurcation_features(G: nx.Graph, image_volume: float,vol_filtered:np.ndarray):
     """Calculates the number of bifurcations (in total and normalized by the image volume."""
     n_bifurcations = sum(1 for node, degree in G.degree() if degree > 2)
-    nikoletta_j2e = sum(1 for node, degree in G.degree() if degree > 3)
+
+    info = skan.summarize(skan.Skeleton(skeletonize(vol_filtered, method='lee')))
+    branch_data = info.loc[info['branch-distance'] > 9]
+    
+    nikoletta_branch_number =  len(branch_data['branch-distance'].values)
+    nikoletta_branch_j2e_total = np.sum(branch_data['branch-type'].values == 1)
+    nikoletta_branch_j2j_total = np.sum(branch_data['branch-type'].values == 2)
+    nikoletta_num_junctions = np.unique(branch_data['node-id-src'].values).shape[0]
+
     return {
         "#bifurcations": n_bifurcations,
         "#bifurcations_normalized": n_bifurcations / image_volume,
-        "nikoletta_j2e": nikoletta_j2e,
+        "nikoletta_branch_number": nikoletta_branch_number,
+        "nikoletta_branch_j2e_total": nikoletta_branch_j2e_total,
+        "nikoletta_branch_j2j_total": nikoletta_branch_j2j_total,
+        "nikoletta_num_junctions": nikoletta_num_junctions,
     }
 
 
