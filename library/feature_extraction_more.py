@@ -60,7 +60,9 @@ def fractal_dimension(
     # get the locations of all non-zero pixels
     locs = np.where(array > 0)
     voxels = np.array([(x, y, z) for x, y, z in zip(*locs)])
-
+    if len(voxels) == 0:
+        return 0
+    
     # count the minimum amount of boxes touched
     Ns = []
     # loop over all scales
@@ -340,6 +342,9 @@ def layer_thickness_features(vol_in: np.ndarray):
     vol = remove_small_objects(vol_in > 0, min_size=3000)
     # vol = vol_in
     vol_mip = np.max(vol, axis=1)
+    if vol_mip.sum()/np.prod(vol_mip.shape) < 0.025:
+        return 10 # Layer thickness evaluation works only when there are enough vessels present
+    
     i_top = np.argmax(vol_mip, axis=0)
 
     window = vol_mip.shape[1] / 4
@@ -370,7 +375,12 @@ def layer_thickness_features(vol_in: np.ndarray):
     i_bot = vol_sum.shape[0] - np.argmax(vol_sum[::-1, :], axis=0)
 
     data_masked = np.where(i_bot == vol_sum.shape[0], np.nan, i_bot)
+
     nans, x = np.isnan(data_masked), lambda z: z.nonzero()[0]
+
+    if nans.sum() > vol_sum.shape[1] * .7:
+        return 10 # If more than 70% of mip needs to be interpolated
+
     interpolator = interp1d(
         x(~nans), data_masked[~nans], bounds_error=False, fill_value="extrapolate"
     )
@@ -424,6 +434,15 @@ def layer_thickness_features(vol_in: np.ndarray):
 
 def bifurcation_features(G: nx.Graph, image_volume: float,vol_filtered:np.ndarray):
     """Calculates the number of bifurcations (in total and normalized by the image volume."""
+    if vol_filtered.sum() == 0:
+        return {
+            "#bifurcations": 0,
+            "#bifurcations_normalized": 0,
+            "nikoletta_branch_number": 0,
+            "nikoletta_branch_j2e_total": 0,
+            "nikoletta_branch_j2j_total": 0,
+            "nikoletta_num_junctions": 0,
+        } 
     n_bifurcations = sum(1 for node, degree in G.degree() if degree > 2)
 
     info = skan.summarize(skan.Skeleton(skeletonize(vol_filtered, method='lee')))
