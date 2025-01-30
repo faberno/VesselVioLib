@@ -438,28 +438,28 @@ def bifurcation_features(G: nx.Graph, image_volume: float,vol_filtered:np.ndarra
         return {
             "#bifurcations": 0,
             "#bifurcations_normalized": 0,
-            "nikoletta_branch_number": 0,
-            "nikoletta_branch_j2e_total": 0,
-            "nikoletta_branch_j2j_total": 0,
-            "nikoletta_num_junctions": 0,
+            "branch_number": 0,
+            "branch_j2e_total": 0,
+            "branch_j2j_total": 0,
+            "num_junctions": 0,
         } 
     n_bifurcations = sum(1 for node, degree in G.degree() if degree > 2)
 
     info = skan.summarize(skan.Skeleton(skeletonize(vol_filtered, method='lee')))
     branch_data = info.loc[info['branch-distance'] > 9]
     
-    nikoletta_branch_number =  len(branch_data['branch-distance'].values)
-    nikoletta_branch_j2e_total = np.sum(branch_data['branch-type'].values == 1)
-    nikoletta_branch_j2j_total = np.sum(branch_data['branch-type'].values == 2)
-    nikoletta_num_junctions = np.unique(branch_data['node-id-src'].values).shape[0]
+    branch_number =  len(branch_data['branch-distance'].values)
+    branch_j2e_total = np.sum(branch_data['branch-type'].values == 1)
+    branch_j2j_total = np.sum(branch_data['branch-type'].values == 2)
+    num_junctions = np.unique(branch_data['node-id-src'].values).shape[0]
 
     return {
         "#bifurcations": n_bifurcations,
         "#bifurcations_normalized": n_bifurcations / image_volume,
-        "nikoletta_branch_number": nikoletta_branch_number,
-        "nikoletta_branch_j2e_total": nikoletta_branch_j2e_total,
-        "nikoletta_branch_j2j_total": nikoletta_branch_j2j_total,
-        "nikoletta_num_junctions": nikoletta_num_junctions,
+        "skan_branch_number": branch_number,
+        "branch_j2e_total": branch_j2e_total,
+        "branch_j2j_total": branch_j2j_total,
+        "num_junctions": num_junctions,
     }
 
 

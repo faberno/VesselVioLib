@@ -112,16 +112,14 @@ def process_single_graph(graph, graphs_dir, seg_dir):
     return features
 
 
-GRAPHS = r"GRAPHS/PATH"
-SEGMENTATIONS = r"SEGMENTATIONS/PATH"
 
-if __name__ == "__main__":
-
+def feats_extract(seg_dir):
+    graph_dir = os.path.join(seg_dir,"vesselvio/Graphs")
     feature_list = []
-    graphs = [f for f in os.listdir(GRAPHS) if f.endswith(".graphml")]
+    graphs = [f for f in os.listdir(graph_dir) if f.endswith(".graphml")]
 
     # Create a partial function with the fixed arguments
-    process_func = partial(process_single_graph, graphs_dir=GRAPHS, seg_dir=SEGMENTATIONS)
+    process_func = partial(process_single_graph, graphs_dir=graph_dir, seg_dir=seg_dir)
     # num_cores = cpu_count()  # Or specify a number like cpu_count() - 1
 
     # with ThreadPoolExecutor(max_workers=num_cores) as executor:
@@ -136,6 +134,8 @@ if __name__ == "__main__":
 
     feature_list.extend(results)
 
-
     df = pd.DataFrame(feature_list)
-    df.to_csv(os.path.join(GRAPHS, "vesselvio_features.csv"))
+    df.to_csv(os.path.join(graph_dir, "vesselvio_features.csv"))
+
+if __name__ == "__main__":
+    feats_extract(r"D:\data\big_dataset_hailong\Nikoletta_dataset\vessel_preds\deep\preds005")
