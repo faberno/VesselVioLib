@@ -13,11 +13,11 @@ from time import perf_counter as pf
 
 import numpy as np
 
-from library import lee94, radii_corrections as RadCor
+from vvl import radii_corrections as RadCor
 
 from numba import njit, prange
 from scipy.ndimage import label
-from skimage.morphology import skeletonize_3d
+from skimage.morphology import skeletonize as skimage_skeletonize
 
 
 #######################
@@ -30,6 +30,8 @@ def volume_prep(volume):
     # Make sure that we're in c-order, was more important for flat
     # skeletonization, but it's 3D now so it's somewhat unnecessary
     volume = np.asarray(volume, dtype=np.uint8)
+    assert np.count_nonzero(volume) > 0, "Volume is empty"
+
     if not volume.data.contiguous:
         volume = np.ascontiguousarray(volume)
     # 3D Processing
@@ -42,39 +44,67 @@ def volume_prep(volume):
 
     return volume, minima
 
-
-@njit(parallel=True, nogil=True, cache=True)
 def binarize_and_bound_3D(volume):
     """
     A function that simultaneously serves to segment an integer
     from a volume as well as record the bounding box locations
     volume: A 3D np.array or np.memmap
     """
-    mins = np.array(volume.shape, dtype=np.int_)
-    maxes = np.zeros(3, dtype=np.int_)
-    for z in prange(volume.shape[0]):
-        for y in range(volume.shape[1]):
-            for x in range(volume.shape[2]):
-                p = volume[z, y, x]
-                if p:
-                    volume[z, y, x] = 1
-                    if z < mins[0]:
-                        mins[0] = z
-                    elif z > maxes[0]:
-                        maxes[0] = z
-                    if y < mins[1]:
-                        mins[1] = y
-                    elif y > maxes[1]:
-                        maxes[1] = y
-                    if x < mins[2]:
-                        mins[2] = x
-                    elif x > maxes[2]:
-                        maxes[2] = x
+    def bounds(axis_mask):
+        return np.argmax(axis_mask), len(axis_mask) - 1 - np.argmax(axis_mask[::-1])
+
+    volume = (volume != 0).astype(int)
+
+    bounds_x = bounds(volume.any((1, 2)))
+    bounds_y = bounds(volume.any((0, 2)))
+    bounds_z = bounds(volume.any((0, 1)))
 
     volume = volume[
-        mins[0] : maxes[0] + 1, mins[1] : maxes[1] + 1, mins[2] : maxes[2] + 1
+             bounds_x[0] : bounds_x[1] + 1,
+             bounds_y[0] : bounds_y[1] + 1,
+             bounds_z[0] : bounds_z[1] + 1
     ]
-    return volume, mins
+
+    minima = np.array([
+        bounds_x[0],
+        bounds_y[0],
+        bounds_z[0]
+    ])
+
+    return volume, minima
+
+# @njit(parallel=True, nogil=True, cache=True)
+# def binarize_and_bound_3D_(volume):
+#     """
+#     A function that simultaneously serves to segment an integer
+#     from a volume as well as record the bounding box locations
+#     volume: A 3D np.array or np.memmap
+#     """
+#     mins = np.array(volume.shape, dtype=np.int_)
+#     maxes = np.zeros(3, dtype=np.int_)
+#     for z in prange(volume.shape[0]):
+#         for y in range(volume.shape[1]):
+#             for x in range(volume.shape[2]):
+#                 p = volume[z, y, x]
+#                 if p:
+#                     volume[z, y, x] = 1
+#                     if z < mins[0]:
+#                         mins[0] = z
+#                     elif z > maxes[0]:
+#                         maxes[0] = z
+#                     if y < mins[1]:
+#                         mins[1] = y
+#                     elif y > maxes[1]:
+#                         maxes[1] = y
+#                     if x < mins[2]:
+#                         mins[2] = x
+#                     elif x > maxes[2]:
+#                         maxes[2] = x
+#
+#     volume = volume[
+#         mins[0] : maxes[0] + 1, mins[1] : maxes[1] + 1, mins[2] : maxes[2] + 1
+#     ]
+#     return volume, mins
 
 
 # Bound and segment 2D volumes
@@ -309,13 +339,8 @@ def skeletonize(volume, verbose=False):
         t = pf()
         print("Skeletonizing...", end="\r")
 
-    # skeleton = skeletonize_3d(volume)
-    if volume.ndim == 2:
-        # Didn't configure my implementation for 2D datasets.
-        skeleton = skeletonize_3d(volume)
-    else:
-        skeleton = np.ascontiguousarray(volume.copy())
-        skeleton = lee94.skeletonize(skeleton, verbose=verbose)
+    skeleton = np.ascontiguousarray(volume)
+    skeleton = skimage_skeletonize(skeleton)
 
     # Rearrange point array to (n,3) or (n,2).
     points = find_centerlines(skeleton)

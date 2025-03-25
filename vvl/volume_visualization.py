@@ -12,13 +12,12 @@ __download__ = "https://jacobbumgarner.github.io/VesselVio/Downloads"
 from multiprocessing import cpu_count
 from time import perf_counter as pf
 
-import matplotlib
 import matplotlib.pyplot as plt
 import mcubes
 import numpy as np
 import pyvista as pv
 
-from library import helpers, input_classes as IC, volume_processing as VolProc
+from vvl import volume_processing as VolProc, helpers, input_classes as IC
 from numba import njit, prange
 
 

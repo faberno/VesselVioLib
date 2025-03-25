@@ -17,23 +17,16 @@ import igraph as ig
 from tqdm import tqdm
 from multiprocessing import Pool, cpu_count
 
-from library import (
-    feature_extraction as FeatExt,
-    graph_io as GIO,
-    graph_processing as GProc,
-    helpers,
-    image_processing as ImProc,
-    input_classes as IC,
-    results_export as ResExp,
-    volume_processing as VolProc,
-    volume_visualization as VolVis,
-)
-from library.annotation import (
-    labeling,
-    segmentation,
-    segmentation_prep,
-    tree_processing,
-)
+from vvl import (volume_visualization as VolVis,
+                 graph_io as GIO,
+                 results_export as ResExp,
+                 volume_processing as VolProc,
+                 helpers,
+                 input_classes as IC,
+                 graph_processing as GProc,
+                 image_processing as ImProc,
+                 feature_extraction as FeatExt)
+from vvl.annotation import segmentation, segmentation_prep, labeling, tree_processing
 
 
 #######################

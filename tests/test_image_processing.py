@@ -7,7 +7,7 @@ sys.path.insert(1, "/Users/jacobbumgarner/Documents/GitHub/VesselVio")
 
 
 import numpy as np
-from library import image_processing
+from vvl import image_processing
 
 from skimage.io import imread
 

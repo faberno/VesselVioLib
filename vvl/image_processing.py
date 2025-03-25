@@ -17,7 +17,7 @@ import cv2
 import nibabel
 import numpy as np
 
-from library import helpers
+from vvl import helpers
 from skimage.io import imread
 
 ## Global min_resolution variable
@@ -224,15 +224,6 @@ def clear_labeled_cache():
 ##########################
 #### Image Processing ####
 ##########################
-def prep_resolution(resolution):
-    if not isinstance(resolution, list):
-        resolution = np.repeat(resolution, 3)
-    else:
-        # Flip the resolution, as numpy first index will represent image depth
-        resolution = np.flip(np.array(resolution))
-    min_resolution = np.min(resolution)
-    return resolution
-
 
 # Get image files from a directory
 # finds the first extension of the file in that dir

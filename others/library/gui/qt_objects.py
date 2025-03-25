@@ -8,8 +8,7 @@ __copyright__ = "Copyright 2022 by Jacob Bumgarner"
 __webpage__ = "https://jacobbumgarner.github.io/VesselVio/"
 __download__ = "https://jacobbumgarner.github.io/VesselVio/Downloads"
 
-
-from library import helpers
+from vvl import helpers
 from PyQt5.QtCore import QSize, Qt
 from PyQt5.QtWidgets import (
     QButtonGroup,

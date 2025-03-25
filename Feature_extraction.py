@@ -9,7 +9,7 @@ import os
 from multiprocessing import Pool
 
 from functools import partial
-from library.feature_extraction_more import (
+from vvl.feature_extraction_more import (
     bifurcation_features,
     blood_volume_features,
     component_length_features,
@@ -19,8 +19,6 @@ from library.feature_extraction_more import (
     largest_voxel_component_size,
     median_bifurcation_exponent,
     vessel_length_features,
-    vessel_curveness_features,
-    vessel_roundness_features,
     vessel_tortuosity_features,
     path_length,
     radius_features,

@@ -17,7 +17,7 @@ from time import perf_counter as pf
 import numpy as np
 from geomdl import knotvector
 
-from library import graph_processing as GProc, helpers, image_processing as ImProc
+from vvl import helpers, graph_processing as GProc, image_processing as ImProc
 from numba import njit
 from scipy import interpolate
 

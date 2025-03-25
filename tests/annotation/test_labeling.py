@@ -7,8 +7,8 @@ sys.path.insert(1, "/Users/jacobbumgarner/Documents/GitHub/VesselVio")
 
 import numpy as np
 
-from library import image_processing as ImProc
-from library.annotation import labeling, segmentation_prep
+from vvl import image_processing as ImProc
+from vvl.annotation import segmentation_prep, labeling
 from skimage.io import imread
 
 

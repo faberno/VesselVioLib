@@ -8,10 +8,13 @@ __copyright__ = "Copyright 2022 by Jacob Bumgarner"
 __webpage__ = "https://jacobbumgarner.github.io/VesselVio/"
 __download__ = "https://jacobbumgarner.github.io/VesselVio/Downloads"
 
-
+from typing import Sequence
+from pathlib import Path
 import os
 
-from library import helpers
+import numpy as np
+
+from vvl import helpers
 
 
 class VisualizationFiles:
@@ -57,17 +60,27 @@ class VisualizationFiles:
 class AnalysisOptions:
     def __init__(
         self,
-        results_folder,
-        resolution,
-        prune_length,
-        filter_length,
-        max_radius,
-        save_segment_results,
-        save_graph,
-        image_dimensions=3,
+        results_folder: str,
+        resolution: Sequence[float|int]|float|int,
+        prune_length: float|int,
+        filter_length: float|int,
+        max_radius: float|int,
+        save_segment_results: bool,
+        save_graph: bool,
+        image_dimensions: int = 3,
     ):
+
+        assert results_folder and Path(results_folder).exists()
         self.results_folder = results_folder
-        self.resolution = resolution
+
+        if isinstance(resolution, np.ndarray):
+            self.resolution = resolution
+        elif isinstance(resolution, Sequence):
+            self.resolution = np.asarray(resolution)
+        else:
+            self.resolution = np.array([resolution] * image_dimensions)
+        assert len(self.resolution) == image_dimensions
+
         self.prune_length = prune_length
         self.filter_length = filter_length
         self.max_radius = max_radius
@@ -124,7 +137,11 @@ class VisualizationOptions:
 
 class AnnotationOptions:
     def __init__(
-        self, annotation_filepath, atlas_filepath, annotation_type, annotation_regions
+            self,
+            annotation_filepath,
+            atlas_filepath,
+            annotation_type,
+            annotation_regions
     ):
         self.annotation_file = annotation_filepath
         self.annotation_atlas = atlas_filepath

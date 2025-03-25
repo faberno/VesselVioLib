@@ -13,9 +13,9 @@ import json
 import os
 import sys
 
-from library import helpers, input_classes as IC, qt_threading as QtTh
+from vvl import helpers, input_classes as IC, qt_threading as QtTh
 
-from library.annotation.tree_processing import RGB_duplicates_check
+from vvl.annotation.tree_processing import RGB_duplicates_check
 from library.gui import qt_objects as QtO
 from library.gui.annotation_page import RGB_Warning
 

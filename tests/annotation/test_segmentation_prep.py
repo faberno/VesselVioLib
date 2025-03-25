@@ -8,8 +8,7 @@ sys.path.insert(1, "/Users/jacobbumgarner/Documents/GitHub/VesselVio")
 import numba
 import numpy as np
 
-from library.annotation import segmentation_prep, tree_processing
-
+from vvl.annotation import segmentation_prep, tree_processing
 
 THIS_PATH = os.path.realpath(__file__)
 FIXTURE_DIR = os.path.join(os.path.dirname(THIS_PATH), "test_files")

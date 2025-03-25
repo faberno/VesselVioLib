@@ -128,4 +128,4 @@ if __name__ == "__main__":
     load_corrections(resolution, new_build=True, verbose=True, Visualize=False)
     load_corrections(resolution, new_build=True, verbose=True, Visualize=True)
 else:
-    from library.helpers import get_cwd
+    from vvl.helpers import get_cwd

@@ -12,9 +12,9 @@ __download__ = "https://jacobbumgarner.github.io/VesselVio/Downloads"
 import json
 import os
 
-from library import helpers
+from vvl import helpers
 
-from library.annotation import tree_processing
+from vvl.annotation import tree_processing
 from library.gui import qt_objects as QtO
 
 from PyQt5.QtCore import Qt

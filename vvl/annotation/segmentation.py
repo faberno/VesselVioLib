@@ -11,7 +11,7 @@ from time import perf_counter as pf
 
 import numpy as np
 
-from library import image_processing as ImProc
+from vvl import image_processing as ImProc
 from numba import njit, prange
 from skimage.io import imread
 
