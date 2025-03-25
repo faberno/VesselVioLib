@@ -5,8 +5,7 @@ import sys
 sys.path.insert(1, "/Users/jacobbumgarner/Documents/GitHub/VesselVio")
 import pytest
 
-from library.annotation import tree_processing
-
+from vvl.annotation import tree_processing
 
 THIS_PATH = os.path.realpath(__file__)
 FIXTURE_DIR = os.path.join(os.path.dirname(THIS_PATH), "test_files")

@@ -12,46 +12,67 @@ __download__ = "https://jacobbumgarner.github.io/VesselVio/Downloads"
 import os
 from pathlib import Path
 from time import perf_counter as pf
+from typing import Optional
 
 import cv2
 import nibabel
 import numpy as np
-
-from library import helpers
 from skimage.io import imread
+from skimage.util import img_as_ubyte
+
+from vvl import helpers, logger
 
 ## Global min_resolution variable
 min_resolution = 1
 
 
-########################
-#### Volume Loading ####
-########################
-## Returns a true binary (0,1) array from an image file when given the file name and directory.
-def load_volume(file, verbose=False):
-    t1 = pf()
+def load_volume(file_path: str, allow_image_binarization: bool=False) -> np.ndarray:
+    """Returns a true binary (0,1) array from an image file when given the file path.
+
+    Parameters
+    ----------
+    file_path : str
+        The file path to the image file.
+    allow_image_binarization : bool, optional
+        Allow the image to be binarized. Default is False.
+
+    Returns
+    -------
+    np.ndarray
+        The loaded volume
+    """
+    start_time = pf()
+    logger.info(f"Loading volume from {file_path}...")
 
     # Only use .nii files for annotations, this is mainly due to loading speeds
-    if helpers.get_ext(file) == ".nii" or helpers.get_ext(file) == ".gz":
-        try:
-            volume = load_nii_volume(file)
-        except Exception as error:
-            print(f"Could not load .nii file using nibabel: {error}")
-            volume = skimage_load(file)
+    file_path = Path(file_path)
+    assert file_path.is_file(), f"File {file_path} is not an existing file."
+
+    extensions = file_path.suffixes
+    if ".nii" in extensions:
+        volume = load_nii_volume(str(file_path))
     else:
-        volume = skimage_load(file)
+        volume = skimage_load(str(file_path))
 
-    if volume is None or volume.ndim not in (2, 3):
-        return None
+    if volume is None:
+        raise ValueError(f"Volume was not loaded successfully.")
+    elif volume.ndim not in (2, 3):
+        raise ValueError(f"Loaded Volume has an invalid number of dimensions: {volume.ndim}.")
 
-    if verbose:
-        print(f"Volume loaded in {pf() - t1:.2f} s.")
+    volume = img_as_ubyte(volume)
+    if volume.max() > 1:
+        if allow_image_binarization:
+            volume = img_as_ubyte(volume > 0)
+        else:
+            raise ValueError("Loaded volume is not binary.")
 
-    return volume, volume.shape
+    logger.info(f"Volume loaded in {pf() - start_time:.2f} s.")
+
+    return volume
 
 
-# Load nifti files
 def load_nii_volume(file):
+    """Loads a nifti file using nibabel."""
     proxy = nibabel.load(file)
     data = proxy.dataobj.get_unscaled().transpose()
     if data.ndim == 4:
@@ -59,8 +80,8 @@ def load_nii_volume(file):
     return data
 
 
-# Load an image volume using SITK, return None upon read failure
 def skimage_load(file):
+    """Loads a file using scikit-image imread. Returns None upon read failure."""
     try:
         volume = imread(file).astype(np.uint8)
     except Exception as error:
@@ -224,15 +245,6 @@ def clear_labeled_cache():
 ##########################
 #### Image Processing ####
 ##########################
-def prep_resolution(resolution):
-    if not isinstance(resolution, list):
-        resolution = np.repeat(resolution, 3)
-    else:
-        # Flip the resolution, as numpy first index will represent image depth
-        resolution = np.flip(np.array(resolution))
-    min_resolution = np.min(resolution)
-    return resolution
-
 
 # Get image files from a directory
 # finds the first extension of the file in that dir

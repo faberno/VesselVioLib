@@ -12,17 +12,10 @@ __download__ = "https://jacobbumgarner.github.io/VesselVio/Downloads"
 
 import sys
 
-import imageio_ffmpeg  # Needed for PyInstaller
-
 import pyvista as pv
 from imageio import get_writer
 
-from library import (
-    helpers,
-    input_classes as IC,
-    movie_processing as MovProc,
-    qt_threading as QtTh,
-)
+from vvl import movie_processing as MovProc, helpers, input_classes as IC, qt_threading as QtTh
 from library.gui import qt_objects as QtO
 
 from PyQt5.Qt import pyqtSlot

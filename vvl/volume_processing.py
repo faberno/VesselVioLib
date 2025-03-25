@@ -12,73 +12,118 @@ __download__ = "https://jacobbumgarner.github.io/VesselVio/Downloads"
 from time import perf_counter as pf
 
 import numpy as np
-
-from library import lee94, radii_corrections as RadCor
-
+from skimage.util import img_as_ubyte
 from numba import njit, prange
 from scipy.ndimage import label
-from skimage.morphology import skeletonize_3d
+from skimage.morphology import skeletonize as skimage_skeletonize
+
+from vvl import logger
+from vvl.radii_corrections import load_corrections
 
 
-#######################
-### Volume Bounding ###
-#######################
-def volume_prep(volume):
-    """IO for volume binarization/segmentation and volume bounding
-    volume: np.ndarray or np.memmap
+def prepare_volume(volume: np.ndarray) -> tuple[np.ndarray, np.ndarray]:
+    """Checks the volume for correct data format and crops border
+    regions without positive values.
+
+    Parameters
+    ----------
+    volume : np.array
+        The volume to be preprocessed.
+
+    Returns
+    -------
+    np.ndarray
+        The preprocessed volume.
+    np.ndarray
     """
-    # Make sure that we're in c-order, was more important for flat
-    # skeletonization, but it's 3D now so it's somewhat unnecessary
-    volume = np.asarray(volume, dtype=np.uint8)
+    start_time = pf()
+    logger.info("Preparing volume...")
+
+    if volume.dtype != np.uint8:
+        raise ValueError("Volume must be a uint8 array.")
     if not volume.data.contiguous:
         volume = np.ascontiguousarray(volume)
+
     # 3D Processing
     if volume.ndim == 3:
-        volume, minima = binarize_and_bound_3D(volume)
-
+        volume, crop_start = binarize_and_bound_3D(volume)
     # 2D Processing
     elif volume.ndim == 2:
-        volume, minima = bound_2D(volume)
+        volume, crop_start = bound_2D(volume)
+    else:
+        raise ValueError("Volume must be 2D or 3D.")
 
-    return volume, minima
+    volume = np.pad(volume, 1)
 
+    logger.info(f"Volume prepared in {(pf() - start_time):.2f} seconds.")
 
-@njit(parallel=True, nogil=True, cache=True)
+    return volume, crop_start
+
 def binarize_and_bound_3D(volume):
     """
     A function that simultaneously serves to segment an integer
     from a volume as well as record the bounding box locations
     volume: A 3D np.array or np.memmap
     """
-    mins = np.array(volume.shape, dtype=np.int_)
-    maxes = np.zeros(3, dtype=np.int_)
-    for z in prange(volume.shape[0]):
-        for y in range(volume.shape[1]):
-            for x in range(volume.shape[2]):
-                p = volume[z, y, x]
-                if p:
-                    volume[z, y, x] = 1
-                    if z < mins[0]:
-                        mins[0] = z
-                    elif z > maxes[0]:
-                        maxes[0] = z
-                    if y < mins[1]:
-                        mins[1] = y
-                    elif y > maxes[1]:
-                        maxes[1] = y
-                    if x < mins[2]:
-                        mins[2] = x
-                    elif x > maxes[2]:
-                        maxes[2] = x
+    def bounds(axis_mask):
+        return np.argmax(axis_mask), len(axis_mask) - 1 - np.argmax(axis_mask[::-1])
+
+    volume = (volume != 0).astype(int)
+
+    bounds_x = bounds(volume.any((1, 2)))
+    bounds_y = bounds(volume.any((0, 2)))
+    bounds_z = bounds(volume.any((0, 1)))
 
     volume = volume[
-        mins[0] : maxes[0] + 1, mins[1] : maxes[1] + 1, mins[2] : maxes[2] + 1
+             bounds_x[0] : bounds_x[1] + 1,
+             bounds_y[0] : bounds_y[1] + 1,
+             bounds_z[0] : bounds_z[1] + 1
     ]
-    return volume, mins
+
+    minima = np.array([
+        bounds_x[0],
+        bounds_y[0],
+        bounds_z[0]
+    ])
+
+    return volume, minima
+
+# @njit(parallel=True, nogil=True, cache=True)
+# def binarize_and_bound_3D(volume: np.ndarray) -> tuple[np.ndarray, np.ndarray]:
+#     """
+#     A function that simultaneously serves to segment an integer
+#     from a volume as well as record the bounding box locations
+#     volume: A 3D np.array or np.memmap
+#     """
+#     mins = np.array(volume.shape, dtype=np.int_)
+#     maxes = np.zeros(3, dtype=np.int_)
+#     for z in prange(volume.shape[0]):
+#         for y in range(volume.shape[1]):
+#             for x in range(volume.shape[2]):
+#                 p = volume[z, y, x]
+#                 if p:
+#                     volume[z, y, x] = 1
+#                     if z < mins[0]:
+#                         mins[0] = z
+#                     elif z > maxes[0]:
+#                         maxes[0] = z
+#                     if y < mins[1]:
+#                         mins[1] = y
+#                     elif y > maxes[1]:
+#                         maxes[1] = y
+#                     if x < mins[2]:
+#                         mins[2] = x
+#                     elif x > maxes[2]:
+#                         maxes[2] = x
+#
+#     volume = volume[
+#         mins[0] : maxes[0] + 1, mins[1] : maxes[1] + 1, mins[2] : maxes[2] + 1
+#     ]
+#     return volume, mins
 
 
 # Bound and segment 2D volumes
-def bound_2D(volume):
+def bound_2D(volume: np.ndarray) -> tuple[np.ndarray, np.ndarray]:
     """Binarize and bound 2 dimensional volumes"""
     volume = (volume > 0).astype(np.uint8)
 
@@ -167,29 +212,20 @@ def filter_segments(labeled, keep_ids):
 ### Radius Calculations ###
 ###########################
 # Loading dock for our volume radii corrections
-def radii_calc_input(volume, points, resolution, gen_vis_radii=False, verbose=False):
-    if verbose:
-        t = pf()
-        print("Calculating radii...", end="\r")
+def radii_calc_input(
+        volume: np.ndarray,
+        points: np.ndarray,
+        resolution: np.ndarray):
+    start_time = pf()
+    logger.info("Calculating radii...")
 
     # Calculate radii for feature analysis
-    # Load the mEDT_LUT
-    LUT = RadCor.load_corrections(resolution, verbose=verbose)
+    LUT = load_corrections(resolution)
     skeleton_radii = radii_calc(volume, points, LUT)
-    del LUT  # Just for sanity
 
-    # If visualizing, rerun to find unit radii of dataset.
-    vis_radii = None
-    if gen_vis_radii:
-        # Load the mEDT_LUT using basis units.
-        LUT = RadCor.load_corrections(Visualize=True, verbose=verbose)
-        vis_radii = radii_calc(volume, points, LUT)
-        del LUT  # Just for sanity
+    logger.info(f"Radii calculated in {pf() - start_time:.2f} seconds.")
 
-    if verbose:
-        print(f"Radii identified in {pf() - t:0.2f} seconds.")
-
-    return skeleton_radii, vis_radii
+    return skeleton_radii
 
 
 def radii_calc(volume, points, LUT):
@@ -304,23 +340,28 @@ def find_centerlines(skeleton):
     return points.astype(np.int_)
 
 
-def skeletonize(volume, verbose=False):
-    if verbose:
-        t = pf()
-        print("Skeletonizing...", end="\r")
+def skeletonize_volume(volume: np.ndarray) -> np.ndarray:
+    """Skeletonizes a volume and returns the centerline as pointcloud.
 
-    # skeleton = skeletonize_3d(volume)
-    if volume.ndim == 2:
-        # Didn't configure my implementation for 2D datasets.
-        skeleton = skeletonize_3d(volume)
-    else:
-        skeleton = np.ascontiguousarray(volume.copy())
-        skeleton = lee94.skeletonize(skeleton, verbose=verbose)
+    Parameters
+    ----------
+    volume: np.ndarray
+        Volume to be skeletonized.
+
+    Returns
+    -------
+    np.ndarray
+        Pointcloud of the skeleton centerline.
+    """
+    start_time = pf()
+    logger.info("Skeletonizing volume...")
+
+    skeleton = np.ascontiguousarray(volume)
+    skeleton = skimage_skeletonize(skeleton)
 
     # Rearrange point array to (n,3) or (n,2).
-    points = find_centerlines(skeleton)
+    skeleton_pointcloud = find_centerlines(skeleton)
 
-    if verbose:
-        print(f"Skeletonization completed in {pf() - t:0.2f} seconds.")
+    logger.info(f"Volume skeletonized in {pf() - start_time:.2f} seconds.")
 
-    return points
+    return skeleton_pointcloud

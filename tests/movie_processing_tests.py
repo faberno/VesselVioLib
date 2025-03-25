@@ -5,7 +5,7 @@ sys.path.insert(1, "/Users/jacobbumgarner/Documents/GitHub/VesselVio")
 import numpy as np
 import pyvista as pv
 
-from library import input_classes as IC, movie_processing as MovProc
+from vvl import movie_processing as MovProc, input_classes as IC
 
 
 def test_generate_flythrough_path():

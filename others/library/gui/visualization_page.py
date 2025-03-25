@@ -16,14 +16,8 @@ import sys
 import numpy as np
 import pyvista as pv
 
-from library import (
-    helpers,
-    image_processing as ImProc,
-    input_classes as IC,
-    movie_processing,
-    qt_threading as QtTh,
-)
-from library.annotation.tree_processing import RGB_duplicates_check
+from vvl import movie_processing, helpers, input_classes as IC, qt_threading as QtTh, image_processing as ImProc
+from vvl.annotation.tree_processing import RGB_duplicates_check
 
 from library.gui import qt_objects as QtO
 from library.gui.analysis_page import AnalysisOptions, GraphOptions

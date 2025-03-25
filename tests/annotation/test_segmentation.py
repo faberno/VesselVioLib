@@ -7,7 +7,7 @@ sys.path.insert(1, "/Users/jacobbumgarner/Documents/GitHub/VesselVio")
 
 import numpy as np
 
-from library.annotation import segmentation
+from vvl.annotation import segmentation
 from skimage.io import imread
 
 

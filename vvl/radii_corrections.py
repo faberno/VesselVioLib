@@ -19,39 +19,63 @@ __download__ = "https://jacobbumgarner.github.io/VesselVio/Downloads"
 import os
 from math import sqrt
 from threading import Lock
+from time import perf_counter as pf
+from pathlib import Path
 
 import numpy as np
 from numba import njit, prange
+
+from vvl import logger
 
 
 ######################
 ### LUT Generation ###
 ######################
-@njit(parallel=True, cache=True)
+
+# ORIGINAL IMPLEMENTATION
+
+# @njit(parallel=True, cache=True)
+# def table_generation(resolution=np.array([1, 1, 1]), size=150):
+#     # size = min(500, ceil(max_radius / np.min(resolution))) # Hard code size limit at 500 mb
+#     LUT = np.zeros((size, size, size))
+#
+#     correction = resolution / 2
+#
+#     for z in prange(size):
+#         for y in range(size):
+#             for x in range(size):
+#                 coords = np.array([z, y, x])
+#                 coords = coords * resolution
+#                 non_zeros = np.count_nonzero(coords)
+#
+#                 # To correct for radii lines along 1D planes, remove half of resolution length.
+#                 if non_zeros == 1:
+#                     # Two of the values will be 0 and therefore negative after correction.
+#                     corrected = coords - correction
+#                     # Remove to isolate true correction.
+#                     corrected = corrected[corrected > 0][0]
+#                     LUT[z, y, x] = corrected
+#
+#                 else:
+#                     a = np.sum(coords**2)
+#                     LUT[z, y, x] = sqrt(a)
+#     return LUT
+
+
 def table_generation(resolution=np.array([1, 1, 1]), size=150):
-    # size = min(500, ceil(max_radius / np.min(resolution))) # Hard code size limit at 500 mb
-    LUT = np.zeros((size, size, size))
+    coord1d = np.arange(size, dtype=np.float64)
+    coords = np.stack(
+        np.meshgrid(coord1d, coord1d, coord1d, indexing="ij"), axis=-1
+    ) * resolution
+    LUT = np.linalg.norm(coords, axis=-1)
 
+    # To correct for radii lines along 1D planes, remove half of resolution length.
+    voxel_1dplane = np.count_nonzero(coords, axis=-1) == 1
     correction = resolution / 2
+    corrected = coords[voxel_1dplane] - correction
 
-    for z in prange(size):
-        for y in range(size):
-            for x in range(size):
-                coords = np.array([z, y, x])
-                coords = coords * resolution
-                non_zeros = np.count_nonzero(coords)
-
-                # To correct for radii lines along 1D planes, remove half of resolution length.
-                if non_zeros == 1:
-                    # Two of the values will be 0 and therefore negative after correction.
-                    corrected = coords - correction
-                    # Remove to isolate true correction.
-                    corrected = corrected[corrected > 0][0]
-                    LUT[z, y, x] = corrected
-
-                else:
-                    a = np.sum(coords**2)
-                    LUT[z, y, x] = sqrt(a)
+    # Two of the values will be 0 and therefore negative after correction.
+    LUT[voxel_1dplane] = corrected.max(1)
     return LUT
 
 # Add a lock for file operations
@@ -64,33 +88,32 @@ file_lock = Lock()
 def load_corrections(
     resolution=np.array([1, 1, 1]),
     new_build=False,
-    Visualize=False,
+    visualize=False,
     size=150,
-    verbose=False,
 ):
 
     # Load the correct LUT: resolution(analysis) or basis(visualization) units.
-    wd = get_cwd()  # Find wd
-    if not Visualize:
-        rc_path = os.path.join(wd, "library/volumes/Radii_Corrections.npy")
+    wd = Path(get_cwd())  # Find wd
+    if not visualize:
+        rc_path = wd / "library" / "volumes" / "Radii_Corrections.npy"
     else:
-        rc_path = os.path.join(wd, "library/volumes/Vis_Radii_Corrections.npy")
+        rc_path = wd / "library" / "volumes" / "Vis_Radii_Corrections.npy"
 
     # Build function
     def build(resolution):
-        if verbose:
-            print("Generating new correction table.")
-        _ = table_generation(size=3)  # Make sure the fxn is compiled
+        start_time = pf()
+
+        logger.info("Generating new correction table.")
         LUT = table_generation(resolution, size)
+
+        rc_path.parent.mkdir(parents=True, exist_ok=True)
         np.save(rc_path, LUT)
 
-        if verbose:
-            print("Table generation complete.")
+        logger.info(f"Table generated in {(pf() - start_time):.2f} s.")
         return LUT
 
-    if new_build or not os.path.exists(rc_path):
-        if verbose:
-            print("New build initiated.")
+    if new_build or not rc_path.exists():
+        logger.info("New build initiated.")
         LUT = build(resolution)
 
     else:
@@ -128,4 +151,4 @@ if __name__ == "__main__":
     load_corrections(resolution, new_build=True, verbose=True, Visualize=False)
     load_corrections(resolution, new_build=True, verbose=True, Visualize=True)
 else:
-    from library.helpers import get_cwd
+    from vvl.helpers import get_cwd

@@ -17,7 +17,7 @@ from time import perf_counter as pf
 import numpy as np
 from geomdl import knotvector
 
-from library import graph_processing as GProc, helpers, image_processing as ImProc
+from vvl import helpers, graph_processing as GProc, image_processing as ImProc, logger
 from numba import njit
 from scipy import interpolate
 
@@ -503,8 +503,7 @@ def vgraph_analysis(
     centerline_smoothing,
     reduce_graph,
     image_dim,
-    image_shape,
-    verbose=False,
+    image_shape
 ):
     features = []
     edges = []
@@ -520,8 +519,8 @@ def vgraph_analysis(
 
     ## First extract results from segments that aren't between branch points
     # This represents the vast majority of segments
-    if verbose:
-        print("Analyzing large segments...", end="\r")
+    logger.info("Analyzing large segments...")
+
     global gsegs, segments, segment_ids
     segment_ids = g.vs.select(_degree_lt=3)
     gsegs = g.subgraph(segment_ids)
@@ -544,8 +543,8 @@ def vgraph_analysis(
 
     ## Now extract features from between-branch point segments
     # These have typically 2-3 vertices
-    if verbose:
-        print("Analyzing large segments", end="\r")
+    logger.info("Analyzing large segments...")
+
     global branch_segments, branch_ids
     branch_ids = g.vs.select(_degree_gt=2)
     gbifs = g.subgraph(branch_ids)
@@ -577,8 +576,8 @@ def vgraph_analysis(
         im_shape,
     )
 
-    if verbose:
-        print("Organizing results...", end="\r")
+
+    logger.info("Organizing results...")
     # Return the results and reduce the graph if saving graph or visualizing
     return record_results(graph, features, edges, reduce_graph)
 
@@ -637,21 +636,16 @@ def feature_input(
     image_dim=3,
     image_shape=None,
     graph_type="Centerlines",
-    roi_name="None",
-    roi_volume="NA",
     centerline_smoothing=True,
     save_seg_results=False,
     reduce_graph=False,
-    verbose=False,
 ):
+    start_time = pf()
+    logger.info("Analyzing dataset...")
 
     # Check to make sure that the graph has remaining vessels
     if not g.vs():
-        return [filename, roi_name, "Empty dataset"], ["Empty Dataset"]
-
-    if verbose:
-        t1 = pf()
-        print("Analyzing dataset...             ", end="\r")
+        return [filename, "Empty dataset"], ["Empty Dataset"]
 
     # Extract features from the graph
     if graph_type == "Centerlines":
@@ -670,8 +664,7 @@ def feature_input(
             centerline_smoothing,
             reduce_graph,
             image_dim,
-            image_shape,
-            verbose=verbose,
+            image_shape
         )
     else:
         (
@@ -685,8 +678,7 @@ def feature_input(
             radii_SD,
         ) = egraph_analysis(g)
 
-    if verbose:
-        print("Analyzing whole-network features...", end="\r")
+    logger.info("Analyzing whole-network features...")
     ### Prepare results for excel export
     ## Whole-network features
     # Length
@@ -699,6 +691,8 @@ def feature_input(
         network_volume_or_PAF = np.sum(volumes_or_PAFs)
     elif image_dim == 2:
         network_volume_or_PAF = np.sum(volumes_or_PAFs) if image_shape else "NA"
+    else:
+        raise ValueError("Invalid image dimension.")
 
     # Surface area
     network_SA = np.sum(surface_areas)
@@ -709,14 +703,8 @@ def feature_input(
     es = g.vs.select(_degree=1)
     endpoints = len(es)
 
-    # ROI Volume
-    if not isinstance(roi_volume, str):  # 'NA' for non-annotated volumes
-        roi_volume *= np.prod(resolution)
-
     network_features = [
         filename,
-        roi_name,
-        roi_volume,
         network_volume_or_PAF,
         network_length,
         network_SA,
@@ -793,7 +781,7 @@ def feature_input(
                 radii_SD,
             ]
         ).T.tolist()
-    if verbose:
-        print(f"Feature extraction completed in {pf() - t1:0.2f} seconds.")
+
+    logger.info(f"Feature extraction completed in {pf() - start_time:.2f} seconds.")
 
     return results, segment_results

@@ -24,9 +24,12 @@ import numpy as np
 import pyvista as pv
 
 from matplotlib.cm import get_cmap
-from PyQt5.QtGui import QPalette
-from PyQt5.QtWidgets import QFileDialog
 
+try:
+    from PyQt5.QtGui import QPalette
+    from PyQt5.QtWidgets import QFileDialog
+except:
+    ImportError("PyQt5 is not installed.")
 
 ##########################
 ### File Path Handling ###

@@ -15,7 +15,7 @@ import igraph as ig
 import numpy as np
 import pandas
 
-from library import feature_extraction as FeatExt, helpers
+from vvl import helpers, feature_extraction as FeatExt
 
 
 ###########################

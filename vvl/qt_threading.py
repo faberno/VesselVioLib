@@ -15,18 +15,9 @@ from time import perf_counter as pf, sleep
 import igraph as ig
 import numpy as np
 
-from library import (
-    feature_extraction as FeatExt,
-    graph_io as GIO,
-    graph_processing as GProc,
-    helpers,
-    image_processing as ImProc,
-    input_classes as IC,
-    results_export as ResExp,
-    volume_processing as VolProc,
-    volume_visualization as VolVis,
-)
-from library.annotation import labeling, segmentation, segmentation_prep
+from vvl import volume_visualization as VolVis, graph_io as GIO, results_export as ResExp, volume_processing as VolProc, \
+    helpers, input_classes as IC, graph_processing as GProc, image_processing as ImProc, feature_extraction as FeatExt
+from vvl.annotation import segmentation, segmentation_prep, labeling
 
 from PyQt5.QtCore import pyqtSignal, QThread
 

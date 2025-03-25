@@ -11,7 +11,7 @@ import json
 import os
 import typing
 
-from library import helpers
+from vvl import helpers
 
 
 class JSON_Options:
@@ -124,7 +124,7 @@ def find_family(tree: list, region_name: str, tree_keys: JSON_Options) -> dict:
 
 def convert_annotation_data(
     regions: list, annotation_file: str = None, tree_keys=None
-) -> list:
+) -> dict:
     """Convert a list of names into a VesselVio annotation list.
 
     Given an annotation tree and a list of region names, identify the ids and

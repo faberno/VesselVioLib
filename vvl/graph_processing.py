@@ -15,7 +15,7 @@ from time import perf_counter as pf
 import igraph as ig
 import numpy as np
 
-from library import feature_extraction as FeatExt, helpers, volume_processing as VolProc
+from vvl import volume_processing as VolProc, helpers, feature_extraction as FeatExt, logger
 from numba import njit
 
 
@@ -160,11 +160,8 @@ def restore_v_neighbors(g, gb_vs):
 
 
 def new_vertex(g, vs, coords=None):
-    if vs[0]["vis_radius"]:
-        vis_radius = np.mean(vs["vis_radius"])
-    else:
-        vis_radius = None
 
+    vis_radius = None
     v_radius = np.mean(vs["v_radius"])
 
     if not coords:
@@ -326,9 +323,10 @@ def class1_processing():
     return len(edges_togo)
 
 
-def clique_filter_input(g, verbose=False):
-    if verbose:
-        tic = pf()
+def clique_filter_input(g):
+    start_time = pf()
+
+    logger.info("Filtering branch point clique clusters...")
 
     # Set up globals for multiprocessing
     global gbs, cliques
@@ -337,14 +335,14 @@ def clique_filter_input(g, verbose=False):
     processed = class_one = class_two = class_three = 0
     gbs, cliques = g_branch_graph(g)
 
-    if verbose:
-        print("Filtering class 1 clique clusters...", end="\r")
+    logger.info("Filtering class 1 clique clusters...")
+
     class_one = class1_processing()
     processed += class_one
     gbs, cliques = g_branch_graph(g, components=True)
 
-    if verbose:
-        print("Filtering class 2 and 3 clique clusters...", end="\r")
+    logger.info("Filtering class 2 and 3 clique clusters...")
+
     if len(cliques) > 0:
         class_two, class_three = class2and3_processing()
         processed += class_two + class_three
@@ -352,12 +350,10 @@ def clique_filter_input(g, verbose=False):
     # Cleanup
     del (g.vs["id"], gbs, cliques)
 
-    if verbose:
-        print(
-            f"{processed} branch point clique clusters "
-            f"corrected in {pf() - tic:0.2f} seconds."
-        )
-        # print (f"{class_one},{class_two},{class_three}")
+    logger.info(
+        f"{processed} branch point clique clusters "
+        f"corrected in {pf() - start_time:0.2f} seconds."
+    )
     return
 
 
@@ -467,12 +463,11 @@ def prune_input(
     prune_length,
     resolution,
     centerline_smoothing=True,
-    graph_type="Centerlines",
-    verbose=False,
+    graph_type="Centerlines"
 ):
-    if verbose:
-        t = pf()
-        print("Pruning end point segments...", end="\r")
+    start_time = pf()
+    logger.info("Pruning end point segments...")
+
     if graph_type == "Centerlines":
         filter = 3
     else:
@@ -503,8 +498,7 @@ def prune_input(
     # Global variable cleanup
     del (gsegs, segments, segment_ids, g_prune_len, g_res)
 
-    if verbose:
-        print(f"Pruned {p1 + p2} segments in {pf() - t:0.2f} seconds.")
+    logger.info(f"Pruned {p1 + p2} segments in {pf() - start_time:0.2f}s.")
 
     return
 
@@ -608,11 +602,9 @@ def filter_input(
     resolution,
     centerline_smoothing=True,
     graph_type="Centerlines",
-    verbose=False,
 ):
-    if verbose:
-        t = pf()
-        print("Filtering isolated segments...", end="\r")
+    start_time = pf()
+    logger.info("Filtering isolated segments...")
 
     # Eliminate isolated vertices
     g.delete_vertices(g.vs.select(_degree=0))
@@ -627,14 +619,13 @@ def filter_input(
         # Edge graph segment filtering
         else:
             filtered = egraph_segment_filter(g, filter_length)
+    else:
+        filtered = 0
 
-    if verbose:
-        if filter_length > 0:
-            print(
-                f"Filtered {filtered} isolated " f"segments in {pf() - t:0.2f} seconds."
-            )
-        else:
-            print("", end="\r")
+    if filter_length > 0:
+        logger.info(
+            f"Filtered {filtered} isolated segments in {pf() - start_time:.2f} seconds."
+        )
 
     return
 
@@ -643,11 +634,11 @@ def filter_input(
 ### Graph creation ###
 ######################
 def create_graph(
-    volume_shape, skeleton_radii, vis_radii, points, point_minima, verbose=False
+    volume_shape, skeleton_radii, points, point_minima
 ):
-    if verbose:
-        print("Creating Graph...", end="\r")
-        tic = pf()
+    start_time = pf()
+
+    logger.info("Creating Graph...")
 
     # Create graph, populate graph with correct number of vertices.
     global g
@@ -657,7 +648,7 @@ def create_graph(
     # Populate vertices with cartesian coordinates and radii
     g.vs["v_coords"] = VolProc.absolute_points(points, point_minima)
     g.vs["v_radius"] = skeleton_radii
-    g.vs["vis_radius"] = vis_radii
+    # g.vs["vis_radius"] = vis_radii
 
     # Prepare what we need for our edge identifictation
     spaces = orientations()  # 13-neighbor search
@@ -665,13 +656,11 @@ def create_graph(
     edges = identify_edges(points, vertex_LUT, spaces)
     g.add_edges(edges)
 
-    if verbose:
-        print("Filtering cliques...", end="\r")
+    logger.info("Filtering cliques...")
 
     # Remove spurious branchpoints from our labeling
-    clique_filter_input(g, verbose=verbose)
+    clique_filter_input(g)
 
-    if verbose:
-        print(f"Graph creation completed in {pf() - tic:0.2f} seconds.")
+    logger.info(f"Graph creation completed in {pf() - start_time:.2f} seconds.")
 
     return g

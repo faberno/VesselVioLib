@@ -18,8 +18,8 @@ import cv2
 import numba
 import numpy as np
 
-from library import image_processing as ImProc
-from library.annotation import segmentation_prep
+from vvl import image_processing as ImProc
+from vvl.annotation import segmentation_prep
 from numba import njit, prange
 
 
