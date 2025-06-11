@@ -197,7 +197,7 @@ def process_volume(volume_file, gen_options, ann_options, vis_options, iteration
                     print("ROI Not in dataset.")
                 continue
         else:
-            volume, point_minima = VolProc.volume_prep(volume)
+            volume, volume_crop_start = VolProc.prepare_volume(volume)
             roi_name = "None"
             roi_volume = "NA"
 
