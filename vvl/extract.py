@@ -1,76 +1,70 @@
-from multiprocessing import Pool, cpu_count
-import os
-from pathlib import Path
-import time
-from typing import Optional
+import logging
+logger = logging.getLogger(__name__)
+
+from math import inf
 
 import igraph as ig
 from tqdm import tqdm
 
-from . import (graph_io as GIO,
-             results_export as ResExp,
-             volume_processing as VolProc,
-             helpers,
-             input_classes as IC,
-             graph_processing as GProc,
-             image_processing as ImProc,
-             feature_extraction as FeatExt)
+# from . import (graph_io as GIO,
+#              results_export as ResExp,
+#              volume_processing as VolProc,
+#              helpers,
+#              input_classes as IC,
+#              graph_processing as GProc,
+#              image_processing as ImProc,
+#              feature_extraction as FeatExt)
 
-try:
-    from . import volume_visualization as VolVis
-except ImportError:
-    print("Could not import volume_visualization.")
+from vvl.input_classes import AnalysisOptions, VisualizationOptions
+from vvl.image_processing import load_volume
+from vvl.volume_processing import skeletonize, calculate_centerline_radii
+from vvl.graph_processing import create_graph, filter_graph_edges
+
+def extract_graph_from_volume(
+        volume_file: str,
+        minimum_endpoint_segment_length: float = 0.0,
+        minimum_isolated_segment_length: float = inf):
+    """
+    # DOCTODO #
+
+    Args:
+        volume_file:
+        minimum_endpoint_segment_length: prune endpoint segments shorter than this length
+        minimum_isolated_segment_length: filter isolated segments shorter than this length
+
+    Returns:
+
+    """
+
+    volume, resolution = load_volume(volume_file)  # todo: raise error if failed or not binary, add enforce binary option
+    # volume, point_minima = VolProc.volume_prep(volume)
+    # volume = pad_volume(volume, analysis_options.padding)
+    skeleton, centerlines = skeletonize(volume)
+
+    centerline_radii = calculate_centerline_radii(
+        volume,
+        centerlines,
+        resolution
+    )
+
+    # todo: handle 2d
+
+    graph = create_graph(
+        centerlines,
+        centerline_radii,
+        volume.shape
+    )
+
+    filter_graph_edges(
+        graph,
+        minimum_endpoint_segment_length,
+        minimum_isolated_segment_length,
+        resolution
+    )
+
+    #
+    # # Filter isolated segments that are shorter than defined length
+    # # If visualizing the dataset, filter these from the volume as well.
+    # filter_input(graph, gen_options.filter_length, resolution, verbose=verbose)
 
 
-from .annotation import segmentation, segmentation_prep, labeling, tree_processing
-
-
-# Process raw segmented volumes
-def process_volume(volume_file: str,
-                   analysis_options: IC.AnalysisOptions,
-                   annotation_options: IC.AnnotationOptions=None,
-                   visualization_options: IC.VisualizationOptions=None,
-                   verbose=True):
-
-    volume_file = Path(volume_file)
-    assert volume_file.is_file()
-
-    filename = volume_file.stem
-    if verbose:
-        tic = time.perf_counter()
-        print("Processing dataset:", filename)
-
-
-    if (annotation_options is None
-            or annotation_options.annotation_type == "None"
-            or annotation_options.annotation_type is None):
-        annotation_data = {None: None}
-    else:
-        annotation_data = tree_processing.convert_annotation_data(
-            annotation_options.annotation_regions,
-            annotation_options.annotation_atlas
-        )
-        roi_array = segmentation_prep.build_roi_array(
-            annotation_data,
-            annotation_type=annotation_options.annotation_type
-        )
-
-    main_graph = ig.Graph()
-
-    for i_roi, roi_name in enumerate(annotation_data.keys()):
-        if verbose:
-            if roi_name:
-                print(f"Analyzing {filename}: {roi_name}.")
-            else:
-                print(f"Analyzing {filename}.")
-
-        # Image and volume processing.
-        volume = ImProc.load_volume(volume_file, verbose=verbose)
-        if volume is None:  # make sure the image was loaded.
-            if verbose:
-                print("Error loading volume.")
-            break
-        elif not ImProc.binary_check(volume):
-            if verbose:
-                print("Error: Non-binary image loaded.")
-            break

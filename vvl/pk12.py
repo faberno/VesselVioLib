@@ -380,7 +380,7 @@ def load_LUT():
         # Determines if we're opening the file from a pyinstaller exec.
         wd = sys._MEIPASS
     except AttributeError:
-        wd = os.getcwd()
+        wd = os.get_cwd()
     file = os.path.join(wd, "library/volumes/PK12.npy")
     if not os.path.exists(file):
         LUT = build_LUT()

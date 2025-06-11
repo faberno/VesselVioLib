@@ -205,7 +205,7 @@ def process_volume(volume_file, gen_options, ann_options, vis_options, iteration
         volume = VolProc.pad_volume(volume)
 
         # Skeletonize, then find radii of skeleton points
-        points = VolProc.skeletonize(volume, verbose=verbose)
+        skeleton, centerlines = VolProc.skeletonize(volume, verbose=verbose)
 
         # Calculate radii
         skeleton_radii, vis_radii = VolProc.radii_calc_input(

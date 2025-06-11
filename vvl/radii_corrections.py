@@ -16,13 +16,17 @@ __webpage__ = "https://jacobbumgarner.github.io/VesselVio/"
 __download__ = "https://jacobbumgarner.github.io/VesselVio/Downloads"
 
 
-import os
+import logging
 from math import sqrt
+from pathlib import Path
 from threading import Lock
 
 import numpy as np
 from numba import njit, prange
 
+from vvl.utils import get_cwd, measure_time
+
+logger = logging.getLogger(__name__)
 
 ######################
 ### LUT Generation ###
@@ -62,36 +66,29 @@ file_lock = Lock()
 ###################
 # Load the corrections table.
 def load_corrections(
-    resolution=np.array([1, 1, 1]),
+    resolution=np.array([1., 1., 1.]),
     new_build=False,
-    Visualize=False,
+    visualize=False,
     size=150,
-    verbose=False,
 ):
 
     # Load the correct LUT: resolution(analysis) or basis(visualization) units.
-    wd = get_cwd()  # Find wd
-    if not Visualize:
-        rc_path = os.path.join(wd, "library/volumes/Radii_Corrections.npy")
-    else:
-        rc_path = os.path.join(wd, "library/volumes/Vis_Radii_Corrections.npy")
+    wd = Path(get_cwd())
+    rc_path = wd / "library" / "volumes" / ("Vis_Radii_Corrections.npy" if visualize else "Radii_Corrections.npy")
 
-    # Build function
-    def build(resolution):
-        if verbose:
-            print("Generating new correction table.")
-        _ = table_generation(size=3)  # Make sure the fxn is compiled
+    @measure_time
+    def build_lut(resolution: np.ndarray):
+        """Builds the LUT for the given resolution."""
         LUT = table_generation(resolution, size)
-        np.save(rc_path, LUT)
 
-        if verbose:
-            print("Table generation complete.")
+        # rc_path.parent.mkdir(parents=True, exist_ok=True)  # Ensure the directory exists
+        # np.save(rc_path, LUT)
+
         return LUT
 
-    if new_build or not os.path.exists(rc_path):
-        if verbose:
-            print("New build initiated.")
-        LUT = build(resolution)
+    if new_build or not rc_path.exists():
+        logger.info("New build initiated.")
+        LUT = build_lut(resolution)
 
     else:
         try:
@@ -116,16 +113,3 @@ def load_corrections(
             LUT = build(resolution)
 
     return LUT
-
-
-######################
-### Terminal Build ###
-######################
-if __name__ == "__main__":
-    from os import getcwd as get_cwd  # Can't load helpers from Library level
-
-    resolution = 1.0  # Either a float or an array.
-    load_corrections(resolution, new_build=True, verbose=True, Visualize=False)
-    load_corrections(resolution, new_build=True, verbose=True, Visualize=True)
-else:
-    from vvl.helpers import get_cwd

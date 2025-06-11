@@ -13,11 +13,12 @@ from time import perf_counter as pf
 
 import numpy as np
 
-from vvl import radii_corrections as RadCor
-
 from numba import njit, prange
 from scipy.ndimage import label
 from skimage.morphology import skeletonize as skimage_skeletonize
+
+from vvl.radii_corrections import load_corrections
+from vvl.utils import measure_time
 
 
 #######################
@@ -196,40 +197,31 @@ def filter_segments(labeled, keep_ids):
 ###########################
 ### Radius Calculations ###
 ###########################
-# Loading dock for our volume radii corrections
-def radii_calc_input(volume, points, resolution, gen_vis_radii=False, verbose=False):
-    if verbose:
-        t = pf()
-        print("Calculating radii...", end="\r")
 
-    # Calculate radii for feature analysis
+
+def calculate_centerline_radii(volume: np.ndarray, points: np.ndarray, resolution: np.ndarray) -> np.ndarray:
+    """DOCTODO
+
+    Args:
+        volume:
+        points:
+        resolution:
+
+    Returns:
+
+    """
     # Load the mEDT_LUT
-    LUT = RadCor.load_corrections(resolution, verbose=verbose)
-    skeleton_radii = radii_calc(volume, points, LUT)
-    del LUT  # Just for sanity
+    LUT = load_corrections(resolution)
 
-    # If visualizing, rerun to find unit radii of dataset.
-    vis_radii = None
-    if gen_vis_radii:
-        # Load the mEDT_LUT using basis units.
-        LUT = RadCor.load_corrections(Visualize=True, verbose=verbose)
-        vis_radii = radii_calc(volume, points, LUT)
-        del LUT  # Just for sanity
-
-    if verbose:
-        print(f"Radii identified in {pf() - t:0.2f} seconds.")
-
-    return skeleton_radii, vis_radii
-
-
-def radii_calc(volume, points, LUT):
     if volume.ndim == 3:
         skeleton_radii = calculate_3Dradii(volume, points, LUT)
-
     elif volume.ndim == 2:
         skeleton_radii = calculate_2Dradii(volume, points, LUT)
+    else:
+        raise ValueError(f"Volume must be 2D or 3D, got {volume.ndim}D.")
 
-    return skeleton_radii.tolist()
+    del LUT  # Just for sanity
+    return skeleton_radii
 
 
 # This function calculates the corrected radii for each centerline point.
@@ -328,24 +320,24 @@ def calculate_2Dradii(volume, points, LUT):
 #######################
 ### Skeletonization ###
 #######################
+
 @njit(cache=True)
-def find_centerlines(skeleton):
-    points = np.vstack(np.nonzero(skeleton)).T
-    return points.astype(np.int_)
+def find_centerlines(skeleton: np.ndarray) -> np.ndarray:
+    centerlines = np.vstack(np.nonzero(skeleton)).T
+    return centerlines
 
+@measure_time
+def skeletonize(volume: np.ndarray) -> [np.ndarray, np.ndarray]:
+    """Skeletonize a 3D volume and return the skeleton and centerlines.
 
-def skeletonize(volume, verbose=False):
-    if verbose:
-        t = pf()
-        print("Skeletonizing...", end="\r")
+    Args:
+        volume:
 
-    skeleton = np.ascontiguousarray(volume)
-    skeleton = skimage_skeletonize(skeleton)
+    Returns:
 
-    # Rearrange point array to (n,3) or (n,2).
-    points = find_centerlines(skeleton)
+    """
 
-    if verbose:
-        print(f"Skeletonization completed in {pf() - t:0.2f} seconds.")
+    skeleton = skimage_skeletonize(np.ascontiguousarray(volume))
+    centerlines = np.vstack(np.nonzero(skeleton)).T
 
-    return points
+    return skeleton, centerlines

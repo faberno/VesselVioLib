@@ -11,11 +11,16 @@ __download__ = "https://jacobbumgarner.github.io/VesselVio/Downloads"
 
 from multiprocessing import cpu_count
 from time import perf_counter as pf
+import logging
+
+from vvl.utils import measure_time, GraphType, is_unix
+
+logger = logging.getLogger(__name__)
 
 import igraph as ig
 import numpy as np
 
-from vvl import volume_processing as VolProc, helpers, feature_extraction as FeatExt
+
 from numba import njit
 
 
@@ -92,16 +97,25 @@ def orientations():
 
 
 ## Construct vertex index LUT
-def construct_vLUT(points, shape):
+def construct_vLUT(points: np.ndarray, volume_shape: tuple):
+    """DOCTODO
+
+    Args:
+        points:
+        volume_shape:
+
+    Returns:
+
+    """
     values = np.arange(0, points.shape[0])
-    vertex_LUT = np.zeros(shape, dtype=np.int_)
+    vertex_LUT = np.zeros(volume_shape, dtype=np.int_)
     vertex_LUT[points[:, 0], points[:, 1], points[:, 2]] = values
     return vertex_LUT
 
 
 @njit(cache=True)
-def identify_edges(points, vertex_LUT, spaces):
-    points = points
+def identify_edges(points: np.ndarray, vertex_LUT: np.ndarray, spaces: np.ndarray) -> list:
+    """Return of all neighboring centerline points."""
     edges = []
 
     for i in range(points.shape[0]):
@@ -118,260 +132,50 @@ def identify_edges(points, vertex_LUT, spaces):
 #########################
 ### Clique Processing ###
 #########################
-# Isoalte branch points from the graph
-def g_branch_graph(g, components=False):
-    # Start by getting a vertex count for our graph
-    # and assign all vertices their original ID.
-    # This will prevent us from having to look up the IDs from a backlog
-    g.vs["id"] = np.arange(g.vcount())
 
-    # Isolate branch point cliques from the graph.
-    gbs = g.subgraph(g.vs.select(_degree_gt=2))
+@measure_time
+def remove_cliques(g):
+    """Filter the graph for cliques."""
 
-    if components:
-        cliques = [clique for clique in gbs.components() if len(clique) > 3]
-    else:
-        # Eliminate all 1-degree edges that are connected to the cliques
-        # Loop through this process indefinitely until
-        # all non-clique branches are removed.
-        while True:
-            count = len(gbs.vs.select(_degree_lt=2))
-            if count == 0:
-                break
-            gbs = gbs.subgraph(gbs.vs.select(_degree_gt=1))
-        cliques = [clique for clique in gbs.maximal_cliques() if 2 < len(clique) < 5]
-    return gbs, cliques
+    delete_list = []
 
+    while True:
 
-# Restore external neighbors to the newly added vertex
-def restore_v_neighbors(g, gb_vs):
-    g_vs = g.vs[gb_vs["id"]]
+        cliques = g.maximal_cliques(min=3)
 
-    neighbors = []
-    all_vs = zip(g_vs, gb_vs)
-    for g_v, gb_v in all_vs:
-        if g_v.degree() != gb_v.degree():  # find external neighbors
-            clique_neighbors = [n["id"] for n in gb_v.neighbors()]
-            neighbors += [
-                n["id"] for n in g_v.neighbors() if n["id"] not in clique_neighbors
-            ]  # add those not in clique
+        if len(cliques) == 0:
+            break
 
-    return neighbors
+        for clique in cliques:
+            g_clique = g.vs[clique]
 
+            # Weight the vs based on radius and neighbor radius
+            weights = g_clique["v_radius"]
+            for i, v in enumerate(g_clique):
+                for n in v.neighbors():
+                    weights[i] += n["v_radius"]
 
-def new_vertex(g, vs, coords=None):
-    if vs[0]["vis_radius"]:
-        vis_radius = np.mean(vs["vis_radius"])
-    else:
-        vis_radius = None
+            # Sort the vertices based on their weights, remove edge between smallest
+            sorted_ids = [v.index for _, v in sorted(zip(weights, g_clique))]
+            edge = (sorted_ids[0], sorted_ids[1])
+            delete_list.append(edge)
 
-    v_radius = np.mean(vs["v_radius"])
+        g.delete_edges(delete_list)
 
-    if not coords:
-        coords = np.mean(vs["v_coords"], axis=0)
-
-    vertex = (v_radius, vis_radius, coords)
-    neighbors = restore_v_neighbors(g, vs)
-    return vertex, neighbors
-
-
-## See documentation for explanation of clique filters
-# Class 3 clique filter - the big cajone
-def class3_filter(g, gbs, clique):
-    vs = gbs.vs[clique]
-    # find the coordinates of all of the clique vertices
-    coords = np.insert(np.array(vs["v_coords"]), 3, np.arange(len(clique)), axis=1)
-
-    # Scan along the cluster in the longest axis
-    distances_rough = [0, 0, 0]
-    for i in range(3):
-        coords = coords[np.argsort(coords[:, i])]
-        # no sqrt here to save time, only add indices, not the id added above
-        distances_rough[i] = np.abs(coords[0, :3] - coords[-1, :3]).sum()
-    axis = np.argmax(distances_rough)
-    coords = coords[np.argsort(coords[:, axis])]
-
-    # Slice along the clique bundle to create a new centerline
-    slices = np.linspace(0, coords.shape[0], min(6, coords.shape[0]), endpoint=True)
-
-    new_vertices = []
-    for i in range(slices.shape[0] - 1):
-        bottom, top = int(slices[i]), int(slices[i + 1])
-        ids = coords[bottom:top, 3].tolist()
-
-        # Get the new vertices
-        vertex, neighbors = new_vertex(g, vs[ids])
-        new_vertices.append([vertex, neighbors])
-
-    return new_vertices
-
-
-# Class 2 clique filter.
-def class2_filter(g, gbs, clique):
-    # For these odd cliques, reduce the clique to a single branchpoint junction
-    gb_vs = gbs.vs[clique]
-
-    # Add new vertex and restore external projections from the cluster
-    vertex, neighbors = new_vertex(g, gb_vs)
-
-    return [vertex, neighbors]
-
-
-def class2and3_dispatcher(bottom, top):
-    vertices_togo = []
-    class_two = []
-    class_three = []
-    for clique in cliques[bottom:top]:
-        vertices_togo += gbs.vs[clique]["id"]
-        if len(clique) <= 50:
-            class_two.append(class2_filter(g, gbs, clique))
-        else:
-            class_three.append(class3_filter(g, gbs, clique))
-
-    return [vertices_togo, class_two, class_three]
-
-
-def class2and3_processing():
-    new_edges = []
-    vertices_togo = []
-    class_two = []
-    class_three = []
-
-    clique_count = len(cliques)
-    workers = cpu_count()
-    if helpers.unix_check() and clique_count > workers:
-        results = helpers.multiprocessing_input(
-            class2and3_dispatcher, clique_count, workers, sublist=True
-        )
-        for result in results:
-            vertices_togo.extend(result[0])
-            class_two += result[1]
-            class_three += result[2]
-
-    else:
-        vertices_togo, class_two, class_three = class2and3_dispatcher(0, clique_count)
-
-    # Add the results to the respective lists, see order in class2/3
-
-    # Restore the class 2 vertices
-    for cluster in class_two:
-        v_info = cluster[0]
-        neighbors = cluster[1]
-        v = g.add_vertex(v_radius=v_info[0], vis_radius=v_info[1], v_coords=v_info[2])
-        new_edges.extend(sorted(tuple([v.index, n]) for n in neighbors))
-
-    # Restore the class 3 vertices
-    for cluster in class_three:
-        cluster_line = []
-        for c in cluster:
-            v_info = c[0]
-            neighbors = c[1]
-            v = g.add_vertex(
-                v_radius=v_info[0], vis_radius=v_info[1], v_coords=v_info[2]
-            )
-            new_edges.extend(sorted(tuple([v.index, n]) for n in neighbors))
-
-        for i in range(len(cluster_line) - 1):
-            edge = sorted(tuple([cluster_line[i], cluster_line[i + 1]]))
-            new_edges.extend(edge)
-
-    # Remove duplicate edges
-    new_edges = [new_edge for new_edge in set(new_edges)]
-    g.add_edges(new_edges)  # Add the new edges
-    g.delete_vertices(vertices_togo)  # Delete the spurious points
-    return len(class_two), len(class_three)
-
-
-# Class 1 clique filter.
-def class1_filter(bottom, top):
-    edges_togo = []
-
-    for clique in cliques[bottom:top]:
-        # Get the original vertices
-        g_vs = g.vs[gbs.vs[clique]["id"]]
-
-        # Check to see if the cliques fit in our class
-        if any(degree >= 5 for degree in g_vs.degree()):
-            continue
-
-        # Weight the vs based on radius and neighbor radius
-        weights = g_vs["v_radius"]
-        for i, v in enumerate(g_vs):
-            for n in v.neighbors():
-                weights[i] += n["v_radius"]
-
-        # Sort the vertices based on their weights, remove edge between smallest
-        sorted_ids = [id for _, id in sorted(zip(weights, g_vs))]
-        edge = (sorted_ids[0]["id"], sorted_ids[1]["id"])
-        edges_togo.append(edge)
-
-    return edges_togo
-
-
-# G, GBS, Clique are all global.
-def class1_processing():
-    # now we want to process these cliques
-    edges_togo = []
-
-    # Make sure there's more cliques than workers
-    workers = cpu_count()
-    clique_count = len(cliques)
-    if helpers.unix_check() and clique_count > workers:
-        edges_togo = helpers.multiprocessing_input(class1_filter, clique_count, workers)
-    else:
-        edges_togo = class1_filter(0, clique_count)
-
-    g.delete_edges(edges_togo)
-
-    return len(edges_togo)
-
-
-def clique_filter_input(g, verbose=False):
-    if verbose:
-        tic = pf()
-
-    # Set up globals for multiprocessing
-    global gbs, cliques
-
-    # Isolate all cliques.
-    processed = class_one = class_two = class_three = 0
-    gbs, cliques = g_branch_graph(g)
-
-    if verbose:
-        print("Filtering class 1 clique clusters...", end="\r")
-    class_one = class1_processing()
-    processed += class_one
-    gbs, cliques = g_branch_graph(g, components=True)
-
-    if verbose:
-        print("Filtering class 2 and 3 clique clusters...", end="\r")
-    if len(cliques) > 0:
-        class_two, class_three = class2and3_processing()
-        processed += class_two + class_three
-
-    # Cleanup
-    del (g.vs["id"], gbs, cliques)
-
-    if verbose:
-        print(
-            f"{processed} branch point clique clusters "
-            f"corrected in {pf() - tic:0.2f} seconds."
-        )
-        # print (f"{class_one},{class_two},{class_three}")
-    return
 
 
 #######################
 ### Segment Pruning ###
 #######################
-# Isolate segments/endpoints from the graph
-def segment_isolation(g, filter):
-    # Store ids of our segment vertices
-    segment_ids = g.vs.select(_degree_lt=filter)
-    gsegs = g.subgraph(segment_ids)
-    segments = gsegs.clusters()  # Find segments
-    segments = [s for s in segments if len(s) < max(1, g_prune_len)]
-    return gsegs, segments, segment_ids
+
+def segment_isolation(g, degree_filter, prune_length):
+    """ Isolate segments from the graph based on a degree filter."""
+    # Select all vertices with a degree less than the filter value.
+    # Those vertices represent the segment part of the vessels and exclude branch points.
+    segment_ids = g.vs.select(_degree_lt=degree_filter)
+    g_segments = g.subgraph(segment_ids)
+    segments = [s for s in g_segments.clusters() if len(s) < max(1, prune_length)]  # todo: doesnt this filter all segments and not just endpoints??
+    return g_segments, segments, segment_ids
 
 
 # Remove short connected endpoint segments from the main graph.
@@ -461,50 +265,61 @@ def edge_graph_prune(g, segment_ids, segments, prune_length):
     return pruned
 
 
-# Input function for segment pruning of volumes and vertex-graphs
-def prune_input(
-    g,
-    prune_length,
-    resolution,
-    centerline_smoothing=True,
-    graph_type="Centerlines",
-    verbose=False,
+def filter_graph_edges(
+        g: ig.Graph,
+        minimum_endpoint_segment_length: float,
+        minimum_isolated_segment_length: float,
+        resolution: np.ndarray,
+        centerline_smoothing: bool = True,
+        graph_type: GraphType = GraphType.CENTERLINE,
 ):
-    if verbose:
-        t = pf()
-        print("Pruning end point segments...", end="\r")
-    if graph_type == "Centerlines":
-        filter = 3
+    if minimum_endpoint_segment_length > 0.0:
+        prune_short_graph_endpoints(
+            g,
+            minimum_endpoint_segment_length,
+            resolution,
+            centerline_smoothing=centerline_smoothing,
+            graph_type=graph_type
+        )
+
+    if minimum_isolated_segment_length > 0.0:
+        filter_input(
+            g,
+            minimum_isolated_segment_length,
+            resolution,
+            centerline_smoothing=centerline_smoothing,
+            graph_type=graph_type,
+        )
+
+
+
+
+def prune_short_graph_endpoints(
+    g: ig.Graph,
+    prune_length: float,
+    resolution: np.ndarray,
+    centerline_smoothing: bool =True,
+    graph_type = GraphType.CENTERLINE
+):
+
+    if graph_type == GraphType.CENTERLINE:
+        degree_filter = 3
     else:
-        filter = 2
+        degree_filter = 2
 
-    # Define global variables for multiprocessing
-    global gsegs, segments, segment_ids, g_prune_len, g_res, g_cl_smoothing
-    g_prune_len = prune_length
-    g_res = resolution.copy()
-    g_cl_smoothing = centerline_smoothing
-    gsegs, segments, segment_ids = segment_isolation(g, filter)
+    gsegs, segments, segment_ids = segment_isolation(g, degree_filter, prune_length)
 
-    if graph_type == "Centerlines":
-        # First pass to prune desired endpoint segments
-        # G will update without a return. Stored as a mutable object.
-        p1 = v_graph_pruning_io()
+    if graph_type == GraphType.CENTERLINE:
+        v_graph_pruning_io()
 
-        # Second pass to prune single-vertex endpoints
         g_prune_len = 1.01
-        gsegs, segments, segment_ids = segment_isolation(g, filter)
+        gsegs, segments, segment_ids = segment_isolation(g, degree_filter)
         p2 = v_graph_pruning_io()
 
     else:
         p1 = edge_graph_prune(g, segment_ids, segments, prune_length)
         # No second pass for edge graphs
         p2 = 0
-
-    # Global variable cleanup
-    del (gsegs, segments, segment_ids, g_prune_len, g_res)
-
-    if verbose:
-        print(f"Pruned {p1 + p2} segments in {pf() - t:0.2f} seconds.")
 
     return
 
@@ -642,36 +457,79 @@ def filter_input(
 ######################
 ### Graph creation ###
 ######################
+
+
+class VesselGraph:
+    def __init__(self, g: ig.Graph):
+        self.centerline_graph = g.copy()
+        self.branch_graph = self.simplify_centerline_graph()
+        self.compute_edge_lengths()
+
+    def simplify_centerline_graph(self):
+        g = self.centerline_graph
+
+        deg = g.degree()
+        keep = {v.index for v in g.vs if deg[v.index] != 2}
+
+        simplified_edges = []
+        visited = set()
+
+        for v in keep:
+            for nbr in g.neighbors(v):
+                if (v, nbr) in visited or (nbr, v) in visited:
+                    continue
+                path = [v]
+                current = nbr
+                prev = v
+                while g.degree(current) == 2 and current not in keep:
+                    path.append(current)
+                    next_nodes = [n for n in g.neighbors(current) if n != prev]
+                    if not next_nodes:
+                        break  # dead end
+                    prev, current = current, next_nodes[0]
+                path.append(current)
+                visited.add((v, current))
+                visited.add((current, v))
+                simplified_edges.append((path[0], path[-1]))
+
+        # Build new graph
+        new_vertices = sorted(keep)
+        id_map = {old: new for new, old in enumerate(new_vertices)}
+        new_g = ig.Graph()
+        new_g.add_vertices(len(new_vertices))
+        new_g.add_edges([(id_map[u], id_map[v]) for u, v in simplified_edges])
+
+        # Add original_id attribute
+        new_g.vs["original_id"] = new_vertices
+
+        return new_g
+
+    def compute_edge_lengths(self):
+        print()
+
+
+@measure_time
 def create_graph(
-    volume_shape, skeleton_radii, vis_radii, points, point_minima, verbose=False
+    centerlines, centerline_radii, volume_shape
 ):
-    if verbose:
-        print("Creating Graph...", end="\r")
-        tic = pf()
 
     # Create graph, populate graph with correct number of vertices.
-    global g
     g = ig.Graph()
-    g.add_vertices(len(points))
+    g.add_vertices(len(centerlines))
 
     # Populate vertices with cartesian coordinates and radii
-    g.vs["v_coords"] = VolProc.absolute_points(points, point_minima)
-    g.vs["v_radius"] = skeleton_radii
-    g.vs["vis_radius"] = vis_radii
+    g.vs["v_coords"] = centerlines
+    g.vs["v_radius"] = centerline_radii
 
     # Prepare what we need for our edge identifictation
     spaces = orientations()  # 13-neighbor search
-    vertex_LUT = construct_vLUT(points, volume_shape)
-    edges = identify_edges(points, vertex_LUT, spaces)
+    vertex_LUT = construct_vLUT(centerlines, volume_shape)
+    edges = identify_edges(centerlines, vertex_LUT, spaces)
     g.add_edges(edges)
 
-    if verbose:
-        print("Filtering cliques...", end="\r")
-
     # Remove spurious branchpoints from our labeling
-    clique_filter_input(g, verbose=verbose)
+    remove_cliques(g)
 
-    if verbose:
-        print(f"Graph creation completed in {pf() - tic:0.2f} seconds.")
+    vessel_graph = VesselGraph(g)
 
-    return g
+    return vessel_graph

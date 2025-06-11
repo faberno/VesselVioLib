@@ -12,73 +12,49 @@ __download__ = "https://jacobbumgarner.github.io/VesselVio/Downloads"
 import os
 from pathlib import Path
 from time import perf_counter as pf
-from typing import Optional
 
 import cv2
-import nibabel
 import numpy as np
+import SimpleITK as sitk
 
-from vvl import helpers
+from vvl.utils import measure_time
 from skimage.io import imread
 
-## Global min_resolution variable
-min_resolution = 1
-
-
-def load_volume(file_path: str, verbose: bool = False) -> Optional[np.ndarray]:
-    """Returns a true binary (0,1) array from an image file when given the file path.
+@measure_time
+def load_volume(file_path: str | Path) -> (np.ndarray, np.ndarray):
+    """DOCTODO
 
     Args:
-        file_path (str): The file path to the image file.
-        verbose (bool, optional): Print verbose output. Defaults to False.
+        file_path: The file path to the image file.
 
     Returns:
-        np.ndarray: The loaded volume
+        The loaded volume and its resolution.
     """
-    start_time = pf()
-
-    # Only use .nii files for annotations, this is mainly due to loading speeds
-    file_path = Path(file_path)
-    assert file_path.is_file(), f"File {file_path} is not an existing file."
+    file = Path(file_path)
+    assert Path(file_path).is_file(), f"File {file_path} is not an existing file."
 
     try:
-        extensions = file_path.suffixes
+        extensions = file.suffixes
         if ".nii" in extensions:
-            volume = load_nii_volume(str(file_path))
+            sitk_image = sitk.ReadImage(file)
+            volume = sitk.GetArrayFromImage(sitk_image)
+            resolution = np.flip(sitk_image.GetSpacing())
         else:
-            volume = skimage_load(str(file_path))
+            volume = imread(file)
+            resolution = np.ones(volume.ndim, dtype=float)
     except Exception as error:
-        print(f"Error loading image file: {error}")
-        return None
+        raise IOError(f"Could not load file {file_path} due to following error: {error}")
 
-    if volume is None or volume.ndim not in (2, 3):
-        print(f"Volume is None or has an invalid number of dimensions: {volume.ndim}")
+    if volume.ndim not in (2, 3):
+        raise ValueError(f"Volume has an invalid number of dimensions: {volume.ndim}. Must be 2 or 3.")
+    elif not issubclass(volume.dtype.type, np.integer):
+        raise ValueError(f"Volume has an invalid dtype: {volume.dtype}. Must be an integer type.")
+    elif volume.min() < 0 or volume.max() > 1:
+        raise ValueError(f"Volume must be binary.")
 
+    volume = volume.astype(bool)
 
-
-    if verbose:
-        print(f"Volume loaded in {pf() - start_time:.2f} s.")
-
-    return volume
-
-
-def load_nii_volume(file):
-    """Loads a nifti file using nibabel."""
-    proxy = nibabel.load(file)
-    data = proxy.dataobj.get_unscaled().transpose()
-    if data.ndim == 4:
-        data = data[0]
-    return data
-
-
-def skimage_load(file):
-    """Loads a file using scikit-image imread. Returns None upon read failure."""
-    try:
-        volume = imread(file).astype(np.uint8)
-    except Exception as error:
-        print(f"Unable to read image file using skimage.io.imread: {error}")
-        volume = None
-    return volume
+    return volume, resolution
 
 
 # Reshape 2D array to make it compatible with analysis pipeline

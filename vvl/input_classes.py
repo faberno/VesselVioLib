@@ -135,20 +135,6 @@ class VisualizationOptions:
         self.viewup = viewup
 
 
-class AnnotationOptions:
-    def __init__(
-            self,
-            annotation_filepath,
-            atlas_filepath,
-            annotation_type,
-            annotation_regions
-    ):
-        self.annotation_file = annotation_filepath
-        self.annotation_atlas = atlas_filepath
-        self.annotation_type = annotation_type
-        self.annotation_regions = annotation_regions
-
-
 class GraphOptions:
     def __init__(
         self,

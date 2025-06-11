@@ -12,7 +12,6 @@ __download__ = "https://jacobbumgarner.github.io/VesselVio/Downloads"
 import concurrent.futures as cf
 import json
 import os
-import platform
 import sys
 import typing
 from itertools import chain
@@ -23,7 +22,7 @@ from time import perf_counter as pf
 import numpy as np
 import pyvista as pv
 
-from matplotlib.cm import get_cmap
+# from matplotlib.cm import get_cmap
 
 try:
     from PyQt5.QtGui import QPalette
@@ -38,37 +37,6 @@ except:
 def std_path(path):
     path = os.path.normpath(path)
     return path
-
-
-# Find out whether the program is running from the app or terminal
-def get_cwd():
-    try:
-        wd = sys._MEIPASS
-    except AttributeError:
-        wd = os.getcwd()
-    return wd
-
-
-def get_dir(location):
-    sys_os = get_OS()
-    if sys_os == "Darwin":
-        load_dir = os.path.join(os.path.expanduser("~"), location)
-    elif sys_os == "Windows":
-        load_dir = os.path.join(os.path.join(os.environ["USERPROFILE"]), location)
-    elif sys_os == "Linux":
-        load_dir = os.path.join(os.path.expanduser("~"), location)
-    load_dir = std_path(load_dir)
-    return load_dir
-
-
-def get_OS():
-    sys_os = platform.system()
-    return sys_os
-
-
-def unix_check():
-    sys_os = get_OS()
-    return sys_os != "Windows"
 
 
 def get_ext(file):
