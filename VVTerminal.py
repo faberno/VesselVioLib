@@ -320,67 +320,8 @@ def process_file(args):
     file_path, gen_options, no_anno, vis_options, iteration, verbose = args
     process_volume(file_path, gen_options, no_anno, vis_options, iteration, verbose)
 
-def graph_extract(src_dir): 
-    compiler_file = os.path.join(
-        helpers.get_cwd(), "library/volumes/JIT_volume.nii"
-    )  # DON'T DELETE
+def graph_extract(src_dir):
 
-    #####################
-    ### Graph Options ###
-    #####################
-    # region
-    graph_file_format = "csv"  # 'csv', 'graphml', 'gml', 'edgelist', etc.
-    delimiter = ";"  # If the file is a csv, what is the delimiter?
-    vertex_representation = "Branches"  # 'Centerlines' or 'Branches' See documentation
-
-    attribute_key = IC.AttributeKey(
-        X="pos_x",
-        Y="pos_x",
-        Z="pos_x",
-        vertex_radius="radius",
-        edge_radius="avgRadiusAvg",
-        length="length",
-        volume="volume",
-        surface_area="",
-        tortuosity="curveness",
-        edge_source="node1id",
-        edge_target="node2id",
-        edge_hex="",
-    )
-
-    centerline_smoothing = True  # Smooth centerlines in vertex-based graphs?
-    clique_corrections = True  # Eliminate cliques from vertex-based graphs?
-
-    graph_options = IC.GraphOptions(
-        graph_file_format,
-        vertex_representation,
-        clique_corrections,
-        centerline_smoothing,
-        attribute_key,
-        delimiter,
-    )
-    # endregion
-
-    ######################
-    ### Volume Options ###
-    ######################
-    # region
-    # Filepath to the annotation. RGB series folder OR .nii Allen brain atlas file
-    annotation_file = ""
-
-    atlas = "library/annotations/annotation_trees/p56 Mouse Brain.json"
-    annotation_type = "ID"  # 'RGB' or 'ID'
-
-    annotation_regions = ["Dentate gyrus, molecular layer"]
-
-    anno_options = IC.AnnotationOptions(annotation_file, atlas, annotation_type, annotation_regions)
-
-    # endregion
-
-    #############################
-    ### Visualization Options ###
-    #############################
-    # region
     visualize = False  # Visualize the dataset?
     simplified_visualization = False  # Faster but less detailed visualization.
     # Network
@@ -419,14 +360,8 @@ def graph_extract(src_dir):
         render_annotation_colors,
     )
 
-    # endregion
 
-    #######################
-    ### General Options ###
-    #######################
-    # region
-    # General features
-    resolution = [3,12,12]  # Single number or [X, Y, Z] format
+    resolution = [12,12,3]  # Single number or [X, Y, Z] format
     prune_length = 0 # Prune end point segments shorter than prune_length
     filter_length = 250 # Filter isolated segments shorter than filter_length
     image_dimensions = 3  # 2 or 3. Affects features extraction. 2D datasets can be treated as if they were 3D.
@@ -469,12 +404,9 @@ def graph_extract(src_dir):
     # for file1 in tqdm(files):
     #     process_volume(file1, gen_options, no_anno, vis_options, iteration, verbose)
     arg_list = [(f, gen_options, no_anno, vis_options, i, verbose) for i,f in enumerate(files)]
-    # Set up parallel processing
-    num_cores = cpu_count() - 1  # Or specify a number like cpu_count() - 1
 
-    with Pool(processes=num_cores) as pool:
-        # Process files in parallel with progress bar
-        list(tqdm(pool.imap(process_file, arg_list), total=len(files)))
+    for arg in arg_list:
+        process_file(arg)
 
     # for arg in tqdm(arg_list):
     #     process_file(arg)

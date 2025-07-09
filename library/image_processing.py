@@ -230,6 +230,7 @@ def prep_resolution(resolution):
     else:
         # Flip the resolution, as numpy first index will represent image depth
         resolution = np.flip(np.array(resolution))
+    global min_resolution
     min_resolution = np.min(resolution)
     return resolution
 

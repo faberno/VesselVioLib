@@ -2,7 +2,7 @@ from VVTerminal import graph_extract
 from Feature_extraction import feats_extract
 
 SRC_DIRS = [
-           r"D:\data\RSOM_FOV_STUDY\vessel_preds\preds005",
+           r"C:\Users\fabia\PycharmProjects\VesselVioLib\data_test",
            ]
 
 if __name__ == "__main__":
