@@ -520,7 +520,7 @@ def vgraph_segment_filter_io(g, filter_length, resolution, centerline_smoothing)
     # If we are here, that means that the filter value is non-zero.
     # So find all clusters that are either 2 vertices long
     # or those that are shorter than the filter length, whichever is the largest
-    clusters = [c for c in clusters if len(c) <= max(2, g_filter_len)]
+    clusters = [c for c in clusters]
 
     seg_count = len(clusters)
     workers = cpu_count()

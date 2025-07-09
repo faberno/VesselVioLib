@@ -13,17 +13,18 @@ def volume_prep(volume):
     # Make sure that we're in c-order, was more important for flat
     # skeletonization, but it's 3D now so it's somewhat unnecessary
     volume = np.asarray(volume, dtype=np.uint8)
+    shape = volume.shape
     if not volume.data.contiguous:
         volume = np.ascontiguousarray(volume)
     # 3D Processing
     if volume.ndim == 3:
-        volume, minima = binarize_and_bound_3D(volume)
+        volume, minima, maxima = binarize_and_bound_3D(volume)
 
     # 2D Processing
     elif volume.ndim == 2:
         volume, minima = bound_2D(volume)
 
-    return volume, minima
+    return volume, minima, np.array(shape) - maxima
 
 
 @njit(parallel=True, nogil=True, cache=True)
@@ -57,7 +58,7 @@ def binarize_and_bound_3D(volume):
     volume = volume[
         mins[0] : maxes[0] + 1, mins[1] : maxes[1] + 1, mins[2] : maxes[2] + 1
     ]
-    return volume, mins
+    return volume, mins, maxes
 
 
 # Bound and segment 2D volumes

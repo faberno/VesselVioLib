@@ -7,13 +7,12 @@ from vvl.utils.image_processing import get_filename, prep_resolution, load_volum
 from vvl.utils.volume_processing import volume_prep, pad_volume, skeletonize, radii_calc_input
 from vvl.utils.graph_processing import create_graph, prune_input, filter_input
 from vvl.utils.feature_processing import feature_input, process_single_graph
-from vvl.utils.io import save_graph
+from vvl.features import extract_features
 
 logger = logging.getLogger(__name__)
 
 import numpy as np
 from scipy.ndimage import distance_transform_edt
-
 
 
 def assign_centerline_indices(volume, centerline_mask, centerline_voxels, spacing):
@@ -42,7 +41,8 @@ def assign_centerline_indices(volume, centerline_mask, centerline_voxels, spacin
 
     return output
 
-def reconstruct_volume(volume, graph, points, resolution):
+
+def reconstruct_volume(volume, graph, points, resolution, point_minima):
     def get_mask_from_subset(A, B):
         # Convert A to a structured array for fast matching
         A_struct = A.view([('', A.dtype)] * A.shape[1])
@@ -76,7 +76,7 @@ def reconstruct_volume(volume, graph, points, resolution):
         assign_volume[coord] = coord_to_idx.get(nearest, -1)  # -1 if somehow not found
 
     filtered_points = np.array([v['v_coords'] for v in graph.vs])
-    filter_mask = get_mask_from_subset(points, filtered_points)
+    filter_mask = get_mask_from_subset(points + point_minima, filtered_points)
     filter_indices = np.where(~filter_mask)[0]
     volume_mask = np.isin(assign_volume, filter_indices)
     assign_volume[volume_mask] = -1
@@ -85,23 +85,18 @@ def reconstruct_volume(volume, graph, points, resolution):
 
 
 def extract_graph_from_volume(
-        volume_file: str,
+        volume: np.ndarray,
         resolution: Sequence,
         filter_length: float,
         prune_length: float = 0.0):
-    filename = get_filename(volume_file)
-
     resolution = prep_resolution(resolution)
+    image_shape = volume.shape
 
-    volume, image_shape = load_volume(volume_file)
-
-    if volume is None:
-        raise ValueError(f"Failed to load volume from {volume_file}. Please check the file path and format.")
-    elif not binary_check(volume):
+    if not binary_check(volume):
         raise ValueError(
-            f"The volume data in {volume_file} is not binary. Please ensure the data is binary (0s and 1s).")
+            f"The volume data is not binary. Please ensure the data is binary (0s and 1s).")
 
-    volume, point_minima = volume_prep(volume)
+    volume, point_minima, point_maxima = volume_prep(volume)
 
     volume = pad_volume(volume)
 
@@ -135,14 +130,14 @@ def extract_graph_from_volume(
     # If visualizing the dataset, filter these from the volume as well.
     filter_input(graph, filter_length, resolution)
 
-    filtered_volume = reconstruct_volume(volume, graph, points, resolution) >= 0
+    filtered_volume = reconstruct_volume(volume, graph, points, resolution, point_minima) >= 0
 
     # endregion
     ## Analysis.
     result, seg_results = feature_input(
         graph,
         resolution,
-        filename,
+        "",
         image_dim=volume.ndim,
         image_shape=image_shape,
         roi_name="None",
@@ -152,29 +147,13 @@ def extract_graph_from_volume(
         reduce_graph=True
     )
 
+    # filtered_volume = np.pad(filtered_volume[1:-1, 1:-1, 1:-1], ((point_minima[0], point_maxima[0] - 1),
+    #                                            (point_minima[1], point_maxima[1] - 1),
+    #                                            (point_minima[2], point_maxima[2] - 1))
+    #                          )
+
     return graph, filtered_volume
 
-    # results_folder = r'C:\Users\fabia\PycharmProjects\VesselVioLib\data\vesselvio'
-    # save_graph(graph, filename, results_folder)
-    #
-    # # --------------
-    #
-    # seg_dir = r'C:\Users\fabia\PycharmProjects\VesselVioLib\data'
-    # graph_dir = os.path.join(seg_dir, "vesselvio/Graphs")
-    # feature_list = []
-    # graphs = [f for f in os.listdir(graph_dir) if f.endswith(".graphml")]
-    #
-    # for graph in graphs:
-    #     results = process_single_graph(graph, graphs_dir=graph_dir, seg_dir=seg_dir)
-    #     # results = []
-    #     # for g in tqdm(graphs):
-    #     #     results.append(process_func(g))
-    #
-    #     feature_list.append(results)
-    #
-    # df = pd.DataFrame(feature_list)
-    # df.to_csv(os.path.join(graph_dir, "vesselvio_features.csv"))
 
-
-def extract_graph_and_volume_features(graph, volume):
-    print()
+def extract_graph_and_volume_features(graph, volume, structure_mask=None):
+    features = extract_features(graph, volume, structure_mask)
