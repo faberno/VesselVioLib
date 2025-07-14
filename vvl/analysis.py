@@ -1,13 +1,17 @@
 import logging
 from typing import Sequence
 import os
+
+import networkx as nx
 import pandas as pd
 
 from vvl.utils.image_processing import get_filename, prep_resolution, load_volume, binary_check, reshape_2D
 from vvl.utils.volume_processing import volume_prep, pad_volume, skeletonize, radii_calc_input
 from vvl.utils.graph_processing import create_graph, prune_input, filter_input
 from vvl.utils.feature_processing import feature_input, process_single_graph
-from vvl.features import extract_features
+from vvl.features import (fractal_dimension, vessel_length_features, bifurcation_features,
+                          skan_features, cycle_features, component_length_features, radius_features,
+                          graph_metric_features, blood_volume_features, vessel_tortuosity_features)
 
 logger = logging.getLogger(__name__)
 
@@ -147,13 +151,38 @@ def extract_graph_from_volume(
         reduce_graph=True
     )
 
-    # filtered_volume = np.pad(filtered_volume[1:-1, 1:-1, 1:-1], ((point_minima[0], point_maxima[0] - 1),
-    #                                            (point_minima[1], point_maxima[1] - 1),
-    #                                            (point_minima[2], point_maxima[2] - 1))
-    #                          )
+    filtered_volume = np.pad(filtered_volume[1:-1, 1:-1, 1:-1], ((point_minima[0], point_maxima[0]),
+                                               (point_minima[1], point_maxima[1]),
+                                               (point_minima[2], point_maxima[2]))
+                             )
+
+    graph = graph.to_networkx()
+    graph.remove_edges_from(nx.selfloop_edges(graph))
 
     return graph, filtered_volume
 
 
-def extract_graph_and_volume_features(graph, volume, structure_mask=None):
-    features = extract_features(graph, volume, structure_mask)
+def extract_graph_and_volume_features(G, volume, resolution=(1., 1., 1.), large_vessel_radius=0.021, structure_mask=None):
+
+    resolution = np.asarray(resolution)
+    voxel_volume = np.prod(resolution)  # volume of a single voxel
+
+    if structure_mask is not None:
+        total_volume = np.sum(structure_mask) * voxel_volume
+    else:
+        total_volume = np.prod(volume.shape) * voxel_volume
+
+    features = {}
+
+    features.update(fractal_dimension(volume))
+    features.update(blood_volume_features(G, total_volume, large_vessel_radius))
+    features.update(vessel_length_features(G, large_vessel_radius, total_volume))
+    features.update(bifurcation_features(G, total_volume, large_vessel_radius))
+    features.update(skan_features(volume, total_volume))
+    features.update(cycle_features(G, total_volume))
+    features.update(component_length_features(G, total_volume))
+    features.update(radius_features(G, large_vessel_radius))
+    features.update(graph_metric_features(G, large_vessel_radius))
+    # features.update(vessel_tortuosity_features(G, large_vessel_radius, resolution))
+
+    return features

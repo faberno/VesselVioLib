@@ -24,7 +24,7 @@ def volume_prep(volume):
     elif volume.ndim == 2:
         volume, minima = bound_2D(volume)
 
-    return volume, minima, np.array(shape) - maxima
+    return volume, minima, np.array(shape) - maxima - 1
 
 
 @njit(parallel=True, nogil=True, cache=True)

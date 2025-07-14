@@ -14,7 +14,6 @@ import nibabel as nib
 from skimage.morphology import remove_small_objects
 
 from vvl.utils.helpers import unix_check, multiprocessing_input, simplify_graph
-from vvl.features import extract_features
 
 MIN_RESOLUTION = 1.0
 

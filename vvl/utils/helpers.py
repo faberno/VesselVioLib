@@ -69,6 +69,8 @@ def simplify_graph(
     coords_lists,
     radii_lists,
 ):
+
+    original_edge_paths = [g.get_shortest_path(e[0], to=e[1], mode='all') for e in reduced_edges]
     g.delete_edges(g.es())
     g.add_edges(
         reduced_edges,
@@ -84,6 +86,7 @@ def simplify_graph(
             "coords_list": coords_lists,
             "radii_list": radii_lists,
             "vis_radius": vis_radii,
+            "original_edge_paths": original_edge_paths,
         },
     )
     g.delete_vertices(g.vs.select(_degree=0))
