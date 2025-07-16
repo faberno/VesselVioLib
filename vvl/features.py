@@ -232,7 +232,7 @@ def skan_features(image_volume: np.ndarray, total_volume: float):
             "num_junctions": 0.0,
         }
 
-    info = skan.summarize(skan.Skeleton(skeletonize(image_volume, method='lee')))
+    info = skan.summarize(skan.Skeleton(skeletonize(image_volume, method='lee')),separator='-')
     branch_data = info.loc[info['branch-distance'] > 9]
 
     branch_number = len(branch_data['branch-distance'].values)
@@ -282,6 +282,10 @@ def radius_features(G: nx.Graph, large_vessel_radius: float):
         "median_small_vessel_radius": np.median(radii[radii < large_vessel_radius]),
         "median_large_vessel_radius": np.median(radii[radii >= large_vessel_radius]),
     }
+
+def extract_radius(G: nx.Graph):
+    radii = np.array([data["radius_avg"] for _, _, data in G.edges(data=True)])
+    return np.median(radii)
 
 def graph_metric_features(G: nx.Graph, large_vessel_radius: float):
     density = nx.density(G)
