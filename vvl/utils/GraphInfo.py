@@ -1,8 +1,6 @@
 import os
 from typing import Sequence, Optional
-import nibabel as nib
-import numpy as np
-import networkx as nx
+from vvl.utils.image_processing import load_volume
 
 from vvl.utils.io import save_graph
 from vvl.analysis import extract_graph_from_volume, extract_graph_and_volume_features
@@ -14,16 +12,14 @@ class GraphInfo:
         self,
         volume_path: str,
         resolution: Sequence[float],
-        vol_spacing: np.array,
         filter_length: int,
         prune_length: float,
         output_dir: Optional[str] = None,
     ):
         self.volume_path = volume_path
         self.name = os.path.basename(volume_path).replace(".nii.gz", "")
-        self.unfiltered_vol = nib.load(volume_path).get_fdata()
+        self.unfiltered_vol = load_volume(volume_path)
         self.resolution = resolution
-        self.vol_spacing = vol_spacing
         self.filter_length = filter_length
         self.prune_length = prune_length
         self.output_dir = output_dir

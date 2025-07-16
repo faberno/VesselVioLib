@@ -1,22 +1,18 @@
 import os
 from pathlib import Path
-from multiprocessing import Pool, cpu_count
+from multiprocessing import Pool
 
 from tqdm import tqdm
-from matplotlib import pyplot as plt
-import networkx as nx
 import numpy as np
-import nibabel as nib
 import pandas as pd
 
 from vvl.utils.GraphInfo import GraphInfo
 
 seg_dir = r"D:\data\joshua\Atlas\vessel_preds\vp\preds038"
 
-resolution = [3, 12, 12]
-filter_length = 250
+resolution = [0.003, 0.012, 0.012]
+filter_length = 0.250
 prune_length = 0.0
-vol_spacing = np.array([0.003, 0.012, 0.012])
 
 
 def extract_graph_wrapper(g_i):
@@ -45,7 +41,6 @@ if __name__ == "__main__":
         graph_info = GraphInfo(
             volume_path,
             resolution=resolution,
-            vol_spacing=vol_spacing,
             filter_length=filter_length,
             prune_length=prune_length,
             output_dir=results_folder
