@@ -10,7 +10,7 @@ resolution = [3, 12, 12]
 filter_length = 250
 prune_length = 0.0
 vol_spacing = np.array([0.003, 0.012, 0.012])
-
+large_vessel_radius = 14
 
 graph_info = GraphInfo(
     volume_path,
@@ -24,8 +24,7 @@ graph_info.extract_graph()
 
 graph_info.extract_features()
 
-large_vessel_radius = np.median([graph_info.features["median_radius"]])
 graph_info.large_vessel_radius = large_vessel_radius
 
-graph_info.extract_size_features()
+graph_info.extract_features()
 

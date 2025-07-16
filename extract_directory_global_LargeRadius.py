@@ -17,21 +17,22 @@ resolution = [3, 12, 12]
 filter_length = 250
 prune_length = 0.0
 vol_spacing = np.array([0.003, 0.012, 0.012])
-large_vessel_radius = 14
+large_vessel_radius = 14.4
+
 
 def extract_graph_wrapper(g_i):
     g_i.extract_graph()
     return g_i
 
 
-def extract_feats_wrapper(g_i):
-    g_i.extract_features()
-    return g_i
+def extract_radii_wrapper(g_i):
+    return g_i.extract_radius()
 
 
 def extract_sizefeats_wrapper(g_i):
-    g_i.extract_size_features()
+    g_i.extract_features()
     return g_i
+
 
 if __name__ == "__main__":
     results_folder = os.path.join(seg_dir, "vesselvio")
@@ -49,7 +50,7 @@ if __name__ == "__main__":
             vol_spacing=vol_spacing,
             filter_length=filter_length,
             prune_length=prune_length,
-            output_dir=results_folder
+            output_dir=results_folder,
         )
         graph_infos.append(graph_info)
 
@@ -60,13 +61,6 @@ if __name__ == "__main__":
     graph_infos.clear()
     graph_infos.extend(results)
 
-    # Extract initial features
-    print("Extracting initial features...")
-    with Pool() as pool:
-        results = list(tqdm(pool.imap(extract_feats_wrapper, graph_infos), total=len(graph_infos)))
-    graph_infos.clear()
-    graph_infos.extend(results)
-    
     for g_i in graph_infos:
         g_i.large_vessel_radius = large_vessel_radius
 
@@ -78,8 +72,7 @@ if __name__ == "__main__":
         )
     graph_infos.clear()
     graph_infos.extend(results)
-    
+
     feature_list = [g_i.features for g_i in graph_infos]
     df = pd.DataFrame(feature_list)
     df.to_csv(os.path.join(results_folder, "features.csv"), index=False)
-    print("asdf")

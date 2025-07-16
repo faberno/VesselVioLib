@@ -1,6 +1,5 @@
 import logging
 from typing import Sequence
-import os
 
 import networkx as nx
 import pandas as pd
@@ -156,10 +155,10 @@ def extract_graph_from_volume(
                                                (point_minima[2], point_maxima[2]))
                              )
 
-    graph = graph.to_networkx()
-    graph.remove_edges_from(nx.selfloop_edges(graph))
+    graph_nx = graph.to_networkx()
+    graph_nx.remove_edges_from(nx.selfloop_edges(graph_nx))
 
-    return graph, filtered_volume
+    return graph, graph_nx, filtered_volume
 
 
 def extract_graph_and_volume_features(G, volume, resolution=(1., 1., 1.), large_vessel_radius=0.021, structure_mask=None):

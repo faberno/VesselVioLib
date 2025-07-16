@@ -15,7 +15,7 @@ structure_mask[500:] = True
 
 volume[~structure_mask] = 0
 
-graph, filtered_volume = extract_graph_from_volume(volume,
+_, graph, filtered_volume = extract_graph_from_volume(volume,
                                                    resolution=[0.003, 0.012, 0.012],
                                                    filter_length=0.250,
                                                    prune_length=0)

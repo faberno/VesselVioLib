@@ -24,13 +24,12 @@ def extract_graph_wrapper(g_i):
     return g_i
 
 
-def extract_feats_wrapper(g_i):
-    g_i.extract_features()
-    return g_i
+def extract_radii_wrapper(g_i):
+    return g_i.extract_radius()
 
 
 def extract_sizefeats_wrapper(g_i):
-    g_i.extract_size_features()
+    g_i.extract_features()
     return g_i
 
 if __name__ == "__main__":
@@ -60,20 +59,15 @@ if __name__ == "__main__":
     graph_infos.clear()
     graph_infos.extend(results)
 
-    # Extract initial features
-    print("Extracting initial features...")
+
+
+    # Extract radii
+    print("Extracting radii...")
     with Pool() as pool:
-        results = list(tqdm(pool.imap(extract_feats_wrapper, graph_infos), total=len(graph_infos)))
-    graph_infos.clear()
-    graph_infos.extend(results)
+        radii = list(tqdm(pool.imap(extract_radii_wrapper, graph_infos), total=len(graph_infos)))
 
-    # Compute large vessel radius
-    def compute_large_vessel_radius(graph_infos):
-        radii = [g_i.features["median_radius"] for g_i in graph_infos]
-        median_radius = np.median(radii)
-        return median_radius
 
-    large_vessel_radius = compute_large_vessel_radius(graph_infos)
+    large_vessel_radius = np.median(radii)
     
     for g_i in graph_infos:
         g_i.large_vessel_radius = large_vessel_radius
@@ -90,4 +84,3 @@ if __name__ == "__main__":
     feature_list = [g_i.features for g_i in graph_infos]
     df = pd.DataFrame(feature_list)
     df.to_csv(os.path.join(results_folder, "features.csv"), index=False)
-    print("asdf")
