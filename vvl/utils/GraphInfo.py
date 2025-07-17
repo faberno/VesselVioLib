@@ -18,11 +18,16 @@ class GraphInfo:
         resolution: Sequence[float],
         filter_length: int,
         prune_length: float,
+        legacy:bool,
         output_dir: Optional[str] = None,
     ):
         self.volume_path = vesselseg_path
         self.name = os.path.basename(vesselseg_path).replace(".nii.gz", "")
         self.unfiltered_vol, _ = load_volume(vesselseg_path)
+        self.legacy = legacy
+        if legacy:
+            self.unfiltered_vol = self.unfiltered_vol.swapaxes(0, 2)
+
         self.graph_features = {}
         self.large_vessel_radius = None
 
@@ -98,16 +103,16 @@ class GraphInfo:
 
         # Process edges and classify them
         for n1, n2, data in self.nx_graph.edges(data=True):
-            coord_list = data["coords_list"]
+            original_edge_postions = data["original_edge_positions"]
 
-            any_lower = any(self.vessel_depth_is_lower(x, y, z) for z, y, x in coord_list)
-            any_upper = any(not self.vessel_depth_is_lower(x, y, z) for z, y, x in coord_list)
+            locs = [self.vessel_depth_is_lower(x, y, z) for x, y, z in original_edge_postions]
+            is_lower = np.sum(locs) / len(locs)
 
-            if any_lower:
+            if is_lower:
                 lower_graph.add_edge(n1, n2, **data)
                 lower_nodes.add(n1)
                 lower_nodes.add(n2)
-            if any_upper:
+            else:
                 upper_graph.add_edge(n1, n2, **data)
                 upper_nodes.add(n1)
                 upper_nodes.add(n2)
