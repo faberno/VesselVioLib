@@ -7,6 +7,7 @@ from skimage.io import imread
 
 from vvl.utils.helpers import get_ext
 
+MIN_RESOLUTION = 1
 
 def get_filename(file_path):
     filename = os.path.splitext(os.path.basename(file_path))[0]
@@ -18,7 +19,8 @@ def prep_resolution(resolution):
     else:
         # Flip the resolution, as numpy first index will represent image depth
         resolution = np.array(resolution)
-    min_resolution = np.min(resolution)
+    global MIN_RESOLUTION
+    MIN_RESOLUTION = np.min(resolution)
     return resolution
 
 

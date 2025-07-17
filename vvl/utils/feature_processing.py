@@ -15,7 +15,6 @@ from skimage.morphology import remove_small_objects
 
 from vvl.utils.helpers import unix_check, multiprocessing_input, simplify_graph
 
-MIN_RESOLUTION = 1.0
 
 def seg_interpolate(point_coords, vis_radius):
     # Find basis-spline (BSpline) of points to smooth jaggedness of skeleton.
@@ -77,6 +76,7 @@ def feature_extraction(
     pruning=False,
     visualize=False,
 ):
+    from vvl.utils.image_processing import MIN_RESOLUTION
 
     vs = g.vs[point_list]
     ### Radius ###
@@ -300,6 +300,8 @@ def large_seg_path(
 # Decided to have a separate function for this one because there
 # is no gsegs subgraph for this process.
 def large_seg_filter(g, segment, resolution, centerline_smoothing=True):
+    from vvl.utils.image_processing import MIN_RESOLUTION
+
     # First find the endpoints of our segment.
     degs = g.degree(segment)
     endpoints = [segment[loc] for loc, deg in enumerate(degs) if deg == 1]

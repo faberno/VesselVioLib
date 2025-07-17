@@ -6,6 +6,8 @@ import concurrent.futures as cf
 import os
 import sys
 
+import numpy as np
+
 
 def get_OS():
     sys_os = platform.system()
@@ -70,7 +72,8 @@ def simplify_graph(
     radii_lists,
 ):
 
-    original_edge_paths = [g.get_shortest_path(e[0], to=e[1], mode='all') for e in reduced_edges]
+    original_edge_paths = [np.array(g.get_shortest_path(e[0], to=e[1], mode='all')) for e in reduced_edges]
+    original_edge_positions = [np.array(g.vs[edge]['v_coords']) for edge in original_edge_paths]
     g.delete_edges(g.es())
     g.add_edges(
         reduced_edges,
@@ -87,6 +90,7 @@ def simplify_graph(
             "radii_list": radii_lists,
             "vis_radius": vis_radii,
             "original_edge_paths": original_edge_paths,
+            "original_edge_positions": original_edge_positions,
         },
     )
     g.delete_vertices(g.vs.select(_degree=0))

@@ -325,16 +325,16 @@ def graph_metric_features(G: nx.Graph, large_vessel_radius: float):
         "mean_small_vessel_degree": mean_small_vessel_degree,
     }
 
-def vessel_tortuosity_features(G: nx.Graph, large_vessel_radius: float, resolution: np.ndarray):
+def vessel_tortuosity_features(G: nx.Graph, large_vessel_radius: float):
     """Calculates the median tortuosity of the vessels."""
-    edge_info = [(data['radius_avg'], data["length"] / np.linalg.norm((data["coords_list"][0] - data["coords_list"][-1]) * resolution)) for _, _, data in G.edges(data=True)]
-    mean_tortuosity = np.mean([e[1] for e in edge_info])
-    mean_large_vessel_tortuosity = np.mean([e[1] for e in edge_info if e[0] >= large_vessel_radius])
-    mean_small_vessel_tortuosity = np.mean([e[1] for e in edge_info if e[0] < large_vessel_radius])
+    edge_info = [(data['radius_avg'], data["tortuosity"]) for _, _, data in G.edges(data=True)]
+    median_tortuosity = np.median([e[1] for e in edge_info])
+    median_large_vessel_tortuosity = np.median([e[1] for e in edge_info if e[0] >= large_vessel_radius])
+    median_small_vessel_tortuosity = np.median([e[1] for e in edge_info if e[0] < large_vessel_radius])
 
-    return {"mean_tortuosity": mean_tortuosity,
-            "mean_large_vessel_tortuosity": mean_large_vessel_tortuosity,
-            "mean_small_vessel_tortuosity": mean_small_vessel_tortuosity}
+    return {"mean_tortuosity": median_tortuosity,
+            "mean_large_vessel_tortuosity": median_large_vessel_tortuosity,
+            "mean_small_vessel_tortuosity": median_small_vessel_tortuosity}
 
 
 # def vessel_roundness_features(G: nx.Graph):
