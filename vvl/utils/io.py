@@ -23,6 +23,8 @@ def save_graph(
         del g.vs["vis_radius"]
     del g.es["radii_list"]
     del g.es["coords_list"]
+    del g.es["original_edge_positions"]
+    del g.es["original_edge_paths"]
     del g.vs["v_coords"]
 
     if caching:
