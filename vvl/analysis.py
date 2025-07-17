@@ -182,6 +182,6 @@ def extract_graph_and_volume_features(G, volume, resolution=(1., 1., 1.), large_
     features.update(component_length_features(G, total_volume))
     features.update(radius_features(G, large_vessel_radius))
     features.update(graph_metric_features(G, large_vessel_radius))
-    # features.update(vessel_tortuosity_features(G, large_vessel_radius, resolution))
+    features.update(vessel_tortuosity_features(G, large_vessel_radius))
 
     return features
