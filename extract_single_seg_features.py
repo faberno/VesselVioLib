@@ -13,7 +13,8 @@ layerseg_path = r"E:\CVD_backup\south_munich\DZMS\processed\uncorrected\layer_se
 results_folder = os.path.join(os.path.dirname(vesselseg_path), "vesselvio")
 Path(results_folder).mkdir(parents=True, exist_ok=True)
 
-resolution = [0.003, 0.012, 0.012]
+# resolution = [0.003, 0.012, 0.012] # Fabian axes order x,y,z)
+resolution = [0.012, 0.012, 0.003]  # Legacy axes order (z,y,x)
 filter_length = 0.250
 prune_length = 0.0
 large_vessel_radius = 14.4
@@ -36,4 +37,3 @@ graph_info.large_vessel_radius = large_vessel_radius
 graph_info.prune_graph_upper_lower()
 
 graph_info.extract_features()
-
