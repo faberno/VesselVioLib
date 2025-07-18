@@ -37,6 +37,7 @@ license-files = ["LICENSE"]
 
 [project.optional-dependencies]
 gui = ["PyQt5"]
+test = ["pytest >= 7.0"]
 
 [tool.setuptools.packages.find]
 include = ["vvl"]

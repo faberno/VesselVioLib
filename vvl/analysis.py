@@ -135,6 +135,9 @@ def extract_graph_from_volume(
 
     filtered_volume = reconstruct_volume(volume, graph, points, resolution, point_minima) >= 0
 
+    # account for padding
+    graph.vs['v_coords'] = [c - 1 for c in graph.vs['v_coords']]
+
     # endregion
     ## Analysis.
     result, seg_results = feature_input(
@@ -161,7 +164,7 @@ def extract_graph_from_volume(
     return graph, graph_nx, filtered_volume
 
 
-def extract_graph_and_volume_features(G, volume, resolution=(1., 1., 1.), large_vessel_radius=0.021, structure_mask=None, include_experimental=False):
+def extract_graph_and_volume_features(G, volume, resolution=(1., 1., 1.), large_vessel_radius=0.021, structure_mask=None, include_experimental=False, normalization=True):
 
     resolution = np.asarray(resolution)
     voxel_volume = np.prod(resolution)  # volume of a single voxel
@@ -171,6 +174,9 @@ def extract_graph_and_volume_features(G, volume, resolution=(1., 1., 1.), large_
     else:
         total_volume = np.prod(volume.shape) * voxel_volume
     total_volume = total_volume.item()
+
+    if not normalization:
+        total_volume = 1.0
 
     features = {}
 

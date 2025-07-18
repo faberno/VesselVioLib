@@ -1,6 +1,7 @@
 import os
 from math import sqrt
 from threading import Lock
+from pathlib import Path
 
 import numpy as np
 from numba import njit, prange
@@ -54,11 +55,12 @@ def load_corrections(
 ):
 
     # Load the correct LUT: resolution(analysis) or basis(visualization) units.
-    wd = get_cwd()  # Find wd
+    wd = Path(os.path.abspath(__file__)).parent
     if not Visualize:
-        rc_path = os.path.join(wd, "library/volumes/Radii_Corrections.npy")
+        rc_path = Path(os.path.abspath(__file__)).parents[2] / "library" / "volumes" / "Radii_Corrections.npy"
     else:
-        rc_path = os.path.join(wd, "library/volumes/Vis_Radii_Corrections.npy")
+        rc_path = Path(os.path.abspath(__file__)).parents[2] / "library" / "volumes" / "Vis_Radii_Corrections.npy"
+    rc_path = str(rc_path)
 
     # Build function
     def build(resolution):

@@ -141,9 +141,14 @@ def median_bifurcation_exponent(G: nx.Graph, large_vessel_radius: float):
                 all_bif_exp_large.append(bif.x)
         except:
             continue
-    return {"median_bifurcation_exponent": np.nanmedian(all_bif_exp).item(),
-            "median_large_vessel_bifurcation_exponent": np.nanmedian(all_bif_exp_large).item(),
-            "median_small_vessel_bifurcation_exponent": np.nanmedian(all_bif_exp_small).item()}
+
+    median_bifurcation_exponent = 0.0 if len(all_bif_exp) == 0 else np.median(all_bif_exp).item()
+    median_large_vessel_bifurcation_exponent = 0.0 if len(all_bif_exp_large) == 0 else np.median(all_bif_exp_large).item()
+    median_small_vessel_bifurcation_exponent = 0.0 if len(all_bif_exp_small) == 0 else np.median(all_bif_exp_small).item()
+
+    return {"median_bifurcation_exponent": median_bifurcation_exponent,
+            "median_large_vessel_bifurcation_exponent": median_large_vessel_bifurcation_exponent,
+            "median_small_vessel_bifurcation_exponent": median_small_vessel_bifurcation_exponent}
 
 def median_branch_length_ratio(G: nx.Graph, large_vessel_radius: float):
     all_nodes = [node for node, degree in G.degree() if degree >= 3]
@@ -165,9 +170,13 @@ def median_branch_length_ratio(G: nx.Graph, large_vessel_radius: float):
         else:
             all_ratios_large.append(parent[0] / parent[1])
 
-    return {"median_branch_length_ratio": np.nanmedian(all_ratios).item(),
-            "median_large_vessel_branch_length_ratio": np.nanmedian(all_ratios_large).item(),
-            "median_small_vessel_branch_length_ratio": np.nanmedian(all_ratios_small).item()}
+    median_branch_length_ratio = 0.0 if len(all_ratios) == 0 else np.nanmedian(all_ratios).item()
+    median_large_vessel_branch_length_ratio = 0.0 if len(all_ratios_large) == 0 else np.nanmedian(all_ratios_large).item()
+    median_small_vessel_branch_length_ratio = 0.0 if len(all_ratios_small) == 0 else np.nanmedian(all_ratios_small).item()
+
+    return {"median_branch_length_ratio": median_branch_length_ratio,
+            "median_large_vessel_branch_length_ratio": median_large_vessel_branch_length_ratio,
+            "median_small_vessel_branch_length_ratio": median_small_vessel_branch_length_ratio}
 
 def blood_volume_features(G: nx.Graph, total_volume: float, large_vessel_radius: float):
     vessel_volumes = [(data["volume"], data["radius_avg"]) for _, _, data in G.edges(data=True)]
@@ -291,10 +300,17 @@ def component_length_features(G: nx.Graph, total_volume: float):
 
 def radius_features(G: nx.Graph, large_vessel_radius: float):
     radii = np.array([data["radius_avg"] for _, _, data in G.edges(data=True)])
+    small_radii = radii[radii < large_vessel_radius]
+    large_radii = radii[radii >= large_vessel_radius]
+
+    median_radius = 0.0 if len(radii) == 0 else np.median(radii).item()
+    median_small_vessel_radius = 0.0 if len(small_radii) == 0 else np.median(small_radii).item()
+    median_large_vessel_radius = 0.0 if len(large_radii) == 0 else np.median(large_radii).item()
+
     return {
-        "median_radius": np.median(radii).item(),
-        "median_small_vessel_radius": np.median(radii[radii < large_vessel_radius]).item(),
-        "median_large_vessel_radius": np.median(radii[radii >= large_vessel_radius]).item(),
+        "median_radius":median_radius,
+        "median_small_vessel_radius": median_small_vessel_radius,
+        "median_large_vessel_radius": median_large_vessel_radius,
     }
 
 def extract_radius(G: nx.Graph):
@@ -327,9 +343,9 @@ def graph_metric_features(G: nx.Graph, large_vessel_radius: float):
             if np.any(radii < large_vessel_radius):
                 degrees_small_vessels.append(len(radii))
 
-        mean_degree = np.mean(degrees).item()
-        mean_large_vessel_degree = np.mean(degrees_large_vessels).item()
-        mean_small_vessel_degree = np.mean(degrees_small_vessels).item()
+        mean_degree = 0.0 if len(degrees) == 0 else np.mean(degrees).item()
+        mean_large_vessel_degree = 0.0 if len(degrees_large_vessels) == 0 else np.mean(degrees_large_vessels).item()
+        mean_small_vessel_degree = 0.0 if len(degrees_small_vessels) == 0 else np.mean(degrees_small_vessels).item()
     
     return {
         "density": density,
@@ -342,9 +358,14 @@ def graph_metric_features(G: nx.Graph, large_vessel_radius: float):
 def vessel_tortuosity_features(G: nx.Graph, large_vessel_radius: float):
     """Calculates the median tortuosity of the vessels."""
     edge_info = [(data['radius_avg'], data["tortuosity"]) for _, _, data in G.edges(data=True)]
-    median_tortuosity = np.median([e[1] for e in edge_info]).item()
-    median_large_vessel_tortuosity = np.median([e[1] for e in edge_info if e[0] >= large_vessel_radius]).item()
-    median_small_vessel_tortuosity = np.median([e[1] for e in edge_info if e[0] < large_vessel_radius]).item()
+
+    tortuosities = [e[1] for e in edge_info]
+    large_tortuosities = [e[1] for e in edge_info if e[0] >= large_vessel_radius]
+    small_tortuosities = [e[1] for e in edge_info if e[0] < large_vessel_radius]
+
+    median_tortuosity = 0.0 if len(tortuosities) == 0 else np.median(tortuosities).item()
+    median_large_vessel_tortuosity = 0.0 if len(large_tortuosities) == 0 else np.median(large_tortuosities).item()
+    median_small_vessel_tortuosity = 0.0 if len(small_tortuosities) == 0 else np.median(small_tortuosities).item()
 
     return {"mean_tortuosity": median_tortuosity,
             "mean_large_vessel_tortuosity": median_large_vessel_tortuosity,
