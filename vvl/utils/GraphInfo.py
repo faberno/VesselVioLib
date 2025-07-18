@@ -16,7 +16,7 @@ class GraphInfo:
         layerseg_path: str,
         depth: int,
         resolution: Sequence[float],
-        filter_length: int,
+        filter_length: float,
         prune_length: float,
         legacy:bool,
         output_dir: Optional[str] = None,
@@ -25,7 +25,7 @@ class GraphInfo:
         self.name = os.path.basename(vesselseg_path).replace(".nii.gz", "")
         self.unfiltered_vol, _ = load_volume(vesselseg_path)
         self.legacy = legacy
-        if legacy:
+        if not legacy:
             self.unfiltered_vol = self.unfiltered_vol.swapaxes(0, 2)
 
         self.graph_features = {}
@@ -84,7 +84,7 @@ class GraphInfo:
 
     def vessel_depth_is_lower(self, x, y, z):
         x, y, z = int(round(x)) - 1, int(round(y)) - 1, int(round(z)) - 1
-        z_offset = self.depth_map[x, y]
+        z_offset = self.depth_map[x,y]
         z_offset += self.upper_lower_depth
         return z >= z_offset
 
