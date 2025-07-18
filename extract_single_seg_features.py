@@ -13,16 +13,16 @@ layerseg_path = r"E:\CVD_backup\south_munich\DZMS\processed\uncorrected\layer_se
 results_folder = os.path.join(os.path.dirname(vesselseg_path), "vesselvio")
 Path(results_folder).mkdir(parents=True, exist_ok=True)
 
-filter_length = 0.250       # remove paths with a length less than this
-prune_length = 0.0          # remove connected endpoint vessels with length less than this
+filter_length = 0.250  # remove paths with a length less than this
+prune_length = 0.0  # remove connected endpoint vessels with length less than this
 large_vessel_radius = 14.4  # Manually define at which radius vessels are considered large
-vp_depth = 70               # Depth at which to seperate the vessels into upper and lower region
-legacy = False               # If using new vesselseg like synthetic vesselseg this Flag needs to be set to false
+vp_depth = 70  # Depth at which to seperate the vessels into upper and lower region
+legacy = False  # If using new vesselseg like synthetic vesselseg this Flag needs to be set to false
 
 if legacy:
     resolution = [0.012, 0.012, 0.003]  # Legacy axes order (z,y,x)
 else:
-    resolution = [0.003, 0.012, 0.012] # Fabian axes order x,y,z)
+    resolution = [0.003, 0.012, 0.012]  # Fabian axes order x,y,z)
 
 graph_info = GraphInfo(
     vesselseg_path,
@@ -39,6 +39,6 @@ graph_info.extract_graph()
 
 graph_info.large_vessel_radius = large_vessel_radius
 
-graph_info.prune_graph_upper_lower()
+graph_info.extract_features_upper_lower()
 
-graph_info.extract_features()
+print("wow wow wow wow wow wow wow wow wow wow wow wow wow wow wow wow wow wow wow wow wow")

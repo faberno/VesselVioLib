@@ -2,6 +2,7 @@ import os
 from typing import Sequence, Optional
 import numpy as np
 import igraph as ig
+import pandas as pd
 
 from vvl.utils.image_processing import load_volume
 from vvl.utils.io import save_graph
@@ -37,6 +38,9 @@ class GraphInfo:
         self.output_dir = output_dir
 
         self.filtered_vol = None
+        self.filtered_vol_lower = None
+        self.filtered_vol_upper = None
+
         self.nx_graph = None
         self.i_graph = None
         self.features = {"name": self.name}
@@ -128,14 +132,28 @@ class GraphInfo:
 
         self.lower_graph = lower_graph
         self.upper_graph = upper_graph
-        save_dir = os.path.join(self.output_dir, "Graphs")
 
         if self.output_dir is not None:
             save_graph(ig.Graph.from_networkx(self.lower_graph), self.name+"_lower", self.output_dir)
             save_graph(ig.Graph.from_networkx(self.upper_graph), self.name+"_upper", self.output_dir)
 
+    def split_upper_lower_volume(self):
+        H, W = self.depth_map.shape
+        z_coords = self.depth_map + self.upper_lower_depth
+        mask_upper = np.arange(self.filtered_vol.shape[2])[None, None,:] < z_coords[ :, :, None]
+        mask_lower = np.arange(self.filtered_vol.shape[2])[None, None,:] > z_coords[  :, :, None]
+        filtered_upper = self.filtered_vol.copy()
+        filtered_lower = self.filtered_vol.copy()
+        filtered_upper[~mask_upper] = 0
+        filtered_lower[~mask_lower] = 0
+        filtered_upper = filtered_upper[...,:np.max(z_coords)]
+        filtered_lower = filtered_lower[...,np.min(z_coords):]
+        self.filtered_vol_lower = filtered_lower
+        self.filtered_vol_upper = filtered_upper
+
 
     def extract_features(self):
+        assert len(self.features) == 1
         self.features.update(
             extract_graph_and_volume_features(
                 G=self.nx_graph,
@@ -145,3 +163,30 @@ class GraphInfo:
                 structure_mask=None,
             )
         )
+        
+
+    def extract_features_upper_lower(self):
+        assert len(self.features) == 1
+        self.prune_graph_upper_lower()
+        self.split_upper_lower_volume()
+
+        features_upper = extract_graph_and_volume_features(
+                G=self.upper_graph,
+                volume=self.filtered_vol_upper,
+                resolution=self.resolution,
+                large_vessel_radius=self.large_vessel_radius,
+                structure_mask=None,
+            )
+        features_lower = extract_graph_and_volume_features(
+                G=self.lower_graph,
+                volume=self.filtered_vol_lower,
+                resolution=self.resolution,
+                large_vessel_radius=self.large_vessel_radius,
+                structure_mask=None,
+            )
+
+        # append _lower and _upper suffix to corresponding dict keys
+        features_upper = {key + "_upper": value for key, value in features_upper.items()}
+        features_lower = {key + "_lower": value for key, value in features_lower.items()}
+        self.features.update(features_upper)
+        self.features.update(features_lower)
