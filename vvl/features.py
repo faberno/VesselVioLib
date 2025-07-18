@@ -92,7 +92,7 @@ def fractal_dimension(
     # perform fit
     coeffs = np.polyfit(np.log(1 / scales), np.log(Ns), 1)
 
-    return {"fractal_dimension": coeffs[0]}
+    return {"fractal_dimension": coeffs[0].item()}
 
 def median_bifurcation_exponent(G: nx.Graph, large_vessel_radius: float):
     """Calculates the median bifurcation exponent of the vessels.
@@ -196,9 +196,9 @@ def vessel_length_features(G: nx.Graph, large_vessel_radius: float, total_volume
         if data["radius_avg"] >= (large_vessel_radius)
     ]
 
-    total_vessel_length = sum(vessels)
-    total_small_vessel_length = sum(small_vessels)  # max RadiusAvg is probably the most accurate
-    total_large_vessel_length = sum(large_vessels)
+    total_vessel_length = np.sum(vessels).item()
+    total_small_vessel_length = np.sum(small_vessels).item()  # max RadiusAvg is probably the most accurate
+    total_large_vessel_length = np.sum(large_vessels).item()
 
     median_vessel_length = 0.0 if len(vessels) == 0 else np.median(vessels).item()
     median_large_vessel_length = 0.0 if len(large_vessels) == 0 else np.median(large_vessels).item()
@@ -208,7 +208,7 @@ def vessel_length_features(G: nx.Graph, large_vessel_radius: float, total_volume
         "total_vessel_length": total_vessel_length / total_volume,
         "total_large_vessel_length": total_large_vessel_length / total_volume,
         "total_small_vessel_length": total_small_vessel_length / total_volume,
-        "median_vessel_length": median_vessel_length,  # todo: should this be normalized?
+        "median_vessel_length": median_vessel_length,
         "median_large_vessel_length": median_large_vessel_length,
         "median_small_vessel_length": median_small_vessel_length,
     }
@@ -236,8 +236,8 @@ def skan_features(image_volume: np.ndarray, total_volume: float):
     branch_data = info.loc[info['branch-distance'] > 9]
 
     branch_number = len(branch_data['branch-distance'].values)
-    branch_j2e_total = np.sum(branch_data['branch-type'].values == 1)
-    branch_j2j_total = np.sum(branch_data['branch-type'].values == 2)
+    branch_j2e_total = np.sum(branch_data['branch-type'].values == 1).item()
+    branch_j2j_total = np.sum(branch_data['branch-type'].values == 2).item()
     num_junctions = np.unique(branch_data['node-id-src'].values).shape[0]
 
     return {
@@ -254,10 +254,23 @@ def cycle_features(G: nx.Graph, total_volume: float):
         G = nx.Graph(G)
 
     basis = nx.cycle_basis(G)
+    cycle_lengths = []
+    for b in basis:
+        length = 0
+        for i in range(len(b)):
+            u, v = b[i], b[(i + 1) % len(b)]
+            length += G.edges[u, v]['length']
+        cycle_lengths.append(length)
+
+    median_cycle_length = 0.0 if len(basis) == 0 else np.median(cycle_lengths).item() / total_volume
+    max_cycle_length = 0.0 if len(basis) == 0 else np.max(cycle_lengths).item()
+
     return {
         "#cycles": len(basis) / total_volume,
-        "median_cycle_length": 0.0 if len(basis) == 0 else np.median([len(b) for b in basis]), # todo: do these features need to be normalized?
-        "max_cycle_length": 0.0 if len(basis) == 0 else max([len(b) for b in basis]),
+        "median_cycle_length": median_cycle_length / total_volume,
+        "max_cycle_length": max_cycle_length / total_volume,
+        "median_cycle_length_unnormalized_experimental": median_cycle_length,
+        "max_cycle_length_unnormalized_experimental": max_cycle_length,
     }
 
 def component_length_features(G: nx.Graph, total_volume: float):
@@ -271,16 +284,17 @@ def component_length_features(G: nx.Graph, total_volume: float):
         lengths.append(sum([(data["length"]) for _, _, data in g.edges(data=True)]))
     return {
         "#components_experimental": len(lengths) / total_volume,
-        "median_length_per_component_experimental": np.median(lengths), # todo: do these features need to be normalized?
-        "longest_connected_component_experimental": np.max(lengths) / total_volume,
+        "median_length_per_component_experimental": np.median(lengths).item() / total_volume,
+        "median_length_per_component_unnormalized_experimental": np.median(lengths).item(),
+        "longest_connected_component_experimental": np.max(lengths).item() / total_volume,
     }
 
 def radius_features(G: nx.Graph, large_vessel_radius: float):
     radii = np.array([data["radius_avg"] for _, _, data in G.edges(data=True)])
     return {
-        "median_radius": np.median(radii),
-        "median_small_vessel_radius": np.median(radii[radii < large_vessel_radius]),
-        "median_large_vessel_radius": np.median(radii[radii >= large_vessel_radius]),
+        "median_radius": np.median(radii).item(),
+        "median_small_vessel_radius": np.median(radii[radii < large_vessel_radius]).item(),
+        "median_large_vessel_radius": np.median(radii[radii >= large_vessel_radius]).item(),
     }
 
 def extract_radius(G: nx.Graph):
@@ -313,13 +327,13 @@ def graph_metric_features(G: nx.Graph, large_vessel_radius: float):
             if np.any(radii < large_vessel_radius):
                 degrees_small_vessels.append(len(radii))
 
-        mean_degree = np.mean(degrees)
-        mean_large_vessel_degree = np.mean(degrees_large_vessels)
-        mean_small_vessel_degree = np.mean(degrees_small_vessels)
+        mean_degree = np.mean(degrees).item()
+        mean_large_vessel_degree = np.mean(degrees_large_vessels).item()
+        mean_small_vessel_degree = np.mean(degrees_small_vessels).item()
     
     return {
         "density": density,
-        "degree_assortativity_coefficient": degree_assortativity_coefficient,
+        "degree_assortativity_coefficient_experimental": degree_assortativity_coefficient,
         "mean_degree": mean_degree,
         "mean_large_vessel_degree": mean_large_vessel_degree,
         "mean_small_vessel_degree": mean_small_vessel_degree,
@@ -328,9 +342,9 @@ def graph_metric_features(G: nx.Graph, large_vessel_radius: float):
 def vessel_tortuosity_features(G: nx.Graph, large_vessel_radius: float):
     """Calculates the median tortuosity of the vessels."""
     edge_info = [(data['radius_avg'], data["tortuosity"]) for _, _, data in G.edges(data=True)]
-    median_tortuosity = np.median([e[1] for e in edge_info])
-    median_large_vessel_tortuosity = np.median([e[1] for e in edge_info if e[0] >= large_vessel_radius])
-    median_small_vessel_tortuosity = np.median([e[1] for e in edge_info if e[0] < large_vessel_radius])
+    median_tortuosity = np.median([e[1] for e in edge_info]).item()
+    median_large_vessel_tortuosity = np.median([e[1] for e in edge_info if e[0] >= large_vessel_radius]).item()
+    median_small_vessel_tortuosity = np.median([e[1] for e in edge_info if e[0] < large_vessel_radius]).item()
 
     return {"mean_tortuosity": median_tortuosity,
             "mean_large_vessel_tortuosity": median_large_vessel_tortuosity,
