@@ -7,8 +7,8 @@ from vvl.utils.GraphInfo import GraphInfo
 
 
 # Configuration
-vesselseg_path = r"E:\CVD_backup\south_munich\DZMS\processed\uncorrected\vessel_preds\preds038\R_G058957050_ARM_Scan00001_img_.nii.gz"  # Set this to your file path
-layerseg_path = r"E:\CVD_backup\south_munich\DZMS\processed\uncorrected\layer_segmentation\processed\good_qual\R_G058957050_ARM_Scan00001_img__processed.nii.gz"
+vesselseg_path = r"E:\CVD_backup\south_munich\DZMS\processed\vessel_preds\preds005\R_G067456110_LEG_Scan00006_img_corr_.nii.gz"  # Set this to your file path
+layerseg_path = r"E:\CVD_backup\south_munich\DZMS\processed\lay_pred\select\R_G067456110_LEG_Scan00006_img_corr__processed.nii.gz"
 
 results_folder = os.path.join(os.path.dirname(vesselseg_path), "vesselvio")
 Path(results_folder).mkdir(parents=True, exist_ok=True)
@@ -17,7 +17,7 @@ filter_length = 0.250  # remove paths with a length less than this
 prune_length = 0.0  # remove connected endpoint vessels with length less than this
 large_vessel_radius = 14.4  # Manually define at which radius vessels are considered large
 vp_depth = 70  # Depth at which to seperate the vessels into upper and lower region
-legacy = False  # If using new vesselseg like synthetic vesselseg this Flag needs to be set to false
+legacy = True  # If using new vesselseg like synthetic vesselseg this Flag needs to be set to false
 
 if legacy:
     resolution = [0.012, 0.012, 0.003]  # Legacy axes order (z,y,x)
