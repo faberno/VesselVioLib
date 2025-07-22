@@ -22,6 +22,7 @@ class GraphInfo:
         prune_length: float,
         legacy: bool,
         output_dir: Optional[str] = None,
+        normalize:bool = True
     ):
         self.volume_path = vesselseg_path
         self.name = os.path.basename(vesselseg_path).replace(".nii.gz", "")
@@ -37,6 +38,7 @@ class GraphInfo:
         self.filter_length = filter_length
         self.prune_length = prune_length
         self.output_dir = output_dir
+        self.normalize = normalize
 
         self.filtered_vol = None
         self.filtered_vol_lower = None
@@ -167,6 +169,7 @@ class GraphInfo:
                 resolution=self.resolution,
                 large_vessel_radius=self.large_vessel_radius,
                 structure_mask=None,
+                normalization=self.normalize,
             )
         )
 
@@ -181,6 +184,7 @@ class GraphInfo:
             resolution=self.resolution,
             large_vessel_radius=self.large_vessel_radius,
             structure_mask=None,
+            normalization=self.normalize,
         )
         features_lower = extract_graph_and_volume_features(
             G=self.lower_graph,
@@ -188,6 +192,7 @@ class GraphInfo:
             resolution=self.resolution,
             large_vessel_radius=self.large_vessel_radius,
             structure_mask=None,
+            normalization=self.normalize,
         )
 
         # append _lower and _upper suffix to corresponding dict keys

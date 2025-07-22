@@ -16,6 +16,7 @@ prune_length = 0.0  # remove connected endpoint vessels with length less than th
 large_vessel_radius = 14.4  # Manually define at which radius vessels are considered large
 vp_depth = 40  # Depth at which to seperate the vessels into upper and lower region
 legacy = True  # If using new vesselseg like synthetic vesselseg this Flag needs to be set to true
+normalize = False # If vessel signal is already cropped to normalized volume then don't need to normalize
 
 if legacy:
     resolution = [0.012, 0.012, 0.003]  # Legacy axes order (z,y,x)
@@ -75,6 +76,7 @@ if __name__ == "__main__":
             prune_length=prune_length,
             legacy=legacy,
             output_dir=results_folder,
+            normalize=normalize,
         )
         graph_infos.append(graph_info)
 
