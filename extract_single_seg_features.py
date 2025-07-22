@@ -1,30 +1,44 @@
 # single_file_processor.py
 import numpy as np
+import os
+from pathlib import Path
+
 from vvl.utils.GraphInfo import GraphInfo
 
 
 # Configuration
-volume_path = r"D:\data\joshua\Atlas\vessel_preds\vp\preds038\R_20241106145816_ATLAS001_532nm_uperarm1_RSOM50_corr.nii.gz"  # Set this to your file path
+vesselseg_path = r"E:\CVD_backup\south_munich\DZMS\processed\vessel_preds\preds005\R_G067456110_LEG_Scan00006_img_corr_.nii.gz"  # Set this to your file path
+layerseg_path = r"E:\CVD_backup\south_munich\DZMS\processed\lay_pred\select\R_G067456110_LEG_Scan00006_img_corr__processed.nii.gz"
 
-resolution = [3, 12, 12]
-filter_length = 250
-prune_length = 0.0
-vol_spacing = np.array([0.003, 0.012, 0.012])
-large_vessel_radius = 14
+results_folder = os.path.join(os.path.dirname(vesselseg_path), "vesselvio")
+Path(results_folder).mkdir(parents=True, exist_ok=True)
+
+filter_length = 0.250  # remove paths with a length less than this
+prune_length = 0.0  # remove connected endpoint vessels with length less than this
+large_vessel_radius = 14.4  # Manually define at which radius vessels are considered large
+vp_depth = 70  # Depth at which to seperate the vessels into upper and lower region
+legacy = True  # If using new vesselseg like synthetic vesselseg this Flag needs to be set to false
+
+if legacy:
+    resolution = [0.012, 0.012, 0.003]  # Legacy axes order (z,y,x)
+else:
+    resolution = [0.003, 0.012, 0.012]  # Fabian axes order x,y,z)
 
 graph_info = GraphInfo(
-    volume_path,
+    vesselseg_path,
+    layerseg_path,
+    depth=vp_depth,
     resolution=resolution,
-    vol_spacing=vol_spacing,
     filter_length=filter_length,
     prune_length=prune_length,
+    legacy=legacy,
+    output_dir=results_folder,
 )
 
 graph_info.extract_graph()
 
-graph_info.extract_features()
-
 graph_info.large_vessel_radius = large_vessel_radius
 
-graph_info.extract_features()
+graph_info.extract_features_upper_lower()
 
+print("wow wow wow wow wow wow wow wow wow wow wow wow wow wow wow wow wow wow wow wow wow")
