@@ -16,8 +16,10 @@ def save_graph(
     g.vs["X"] = points[:, 2]
     g.vs["Y"] = points[:, 1]
     g.vs["Z"] = points[:, 0]
+    
+    tmp = [edge_positions for edge_positions in g.es["original_edge_positions"]]
+    g.es["z_dist"] = [sum(sub_array[2] for sub_array in tmp_new) / len(tmp_new) for tmp_new in tmp]
 
-    # Get rid of unneeded attributes
     if main_thread:
         del g.vs["v_radius"]
         del g.vs["vis_radius"]
