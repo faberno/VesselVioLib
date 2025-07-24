@@ -136,8 +136,27 @@ class GraphInfo:
         self.upper_graph = upper_graph
 
         if self.output_dir is not None:
-            save_graph(ig.Graph.from_networkx(self.lower_graph), self.name + "_lower", self.output_dir)
-            save_graph(ig.Graph.from_networkx(self.upper_graph), self.name + "_upper", self.output_dir)
+            g = ig.Graph.from_networkx(self.lower_graph)
+            tmp = [edge_positions for edge_positions in g.es["original_edge_positions"]]
+            z_dists = [sum(sub_array[2] for sub_array in tmp_new) / len(tmp_new) for tmp_new in tmp]
+            x_dists = [sum(sub_array[0] for sub_array in tmp_new) / len(tmp_new) for tmp_new in tmp]
+            # x_dists = [self.depth_map.shape[0] - 1 - x for x in x_dists]
+            y_dists = [sum(sub_array[1] for sub_array in tmp_new) / len(tmp_new) for tmp_new in tmp]
+            z_dists = [z_dists[i] - self.depth_map[int(round(x_dists[i])), int(round(y_dists[i]))] for i in range(len(z_dists))]
+
+            g.es["z_dist"] = z_dists
+            save_graph(g, self.name + "_lower", self.output_dir)
+
+            g = ig.Graph.from_networkx(self.upper_graph)
+            tmp = [edge_positions for edge_positions in g.es["original_edge_positions"]]
+            z_dists = [sum(sub_array[2] for sub_array in tmp_new) / len(tmp_new) for tmp_new in tmp]
+            x_dists = [sum(sub_array[0] for sub_array in tmp_new) / len(tmp_new) for tmp_new in tmp]
+            # x_dists = [self.depth_map.shape[0] - 1 - x for x in x_dists]
+            y_dists = [sum(sub_array[1] for sub_array in tmp_new) / len(tmp_new) for tmp_new in tmp]
+            z_dists = [z_dists[i] - self.depth_map[int(round(x_dists[i])), int(round(y_dists[i]))] for i in range(len(z_dists))]
+
+            g.es["z_dist"] = z_dists
+            save_graph(g, self.name + "_upper", self.output_dir)
 
     def split_upper_lower_volume(self, save_vols=False):
         def save_nii(V, path):
