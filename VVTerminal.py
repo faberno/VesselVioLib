@@ -11,7 +11,6 @@ __download__ = "https://jacobbumgarner.github.io/VesselVio/Downloads"
 
 import os
 import time
-from pathlib import Path
 
 import igraph as ig
 from tqdm import tqdm
@@ -313,7 +312,7 @@ def process_file(args):
     file_path, gen_options, no_anno, vis_options, iteration, verbose = args
     process_volume(file_path, gen_options, no_anno, vis_options, iteration, verbose)
 
-def graph_extract(src_dir): 
+if __name__ == "__main__":
     compiler_file = os.path.join(
         helpers.get_cwd(), "library/volumes/JIT_volume.nii"
     )  # DON'T DELETE
@@ -420,15 +419,13 @@ def graph_extract(src_dir):
     # region
     # General features
     resolution = [3,12,12]  # Single number or [X, Y, Z] format
-    prune_length = 0 # Prune end point segments shorter than prune_length
-    filter_length = 250 # Filter isolated segments shorter than filter_length
+    prune_length = 75  # Prune end point segments shorter than prune_length
+    filter_length = 150  # Filter isolated segments shorter than filter_length
     image_dimensions = 3  # 2 or 3. Affects features extraction. 2D datasets can be treated as if they were 3D.
 
     # Results/graph export
     save_segment_results = False  # Save individual segment features to csv file
-
-    results_folder = os.path.join(src_dir, "vesselvio")
-    Path(results_folder).mkdir(parents=True, exist_ok=True)
+    results_folder = r"D:\data\CVD\Tuebingen\vessel_preds\preds005\vesselvio"
     save_graph = True  # Save reduced graph export?
     verbose = False
 
@@ -454,7 +451,8 @@ def graph_extract(src_dir):
     ######################
     ### Run files here ###
     ######################
-    files =[os.path.join(src_dir, f) for f in os.listdir(src_dir) if f.endswith(".nii.gz")]
+    SEG_DIR = r"Segmentation/Directory/Here"
+    files =[os.path.join(SEG_DIR, f) for f in os.listdir(SEG_DIR) if f.endswith(".nii.gz")]
     
     iteration = 0
 
@@ -484,9 +482,3 @@ def graph_extract(src_dir):
     graph1 = "example.graphml"
 
     # process_graph(graph0, gen_options, graph_options, vis_options, verbose)
-
-
-if __name__ == "__main__":
-
-    SRC_DIR = r""
-    graph_extract(SRC_DIR)
