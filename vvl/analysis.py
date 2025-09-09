@@ -3,6 +3,7 @@ from typing import Sequence
 
 import networkx as nx
 import pandas as pd
+import nibabel as nib
 
 from vvl.utils.image_processing import get_filename, prep_resolution, load_volume, binary_check, reshape_2D
 from vvl.utils.volume_processing import volume_prep, pad_volume, skeletonize, radii_calc_input
@@ -170,7 +171,8 @@ def extract_graph_and_volume_features(G, volume, resolution=(1., 1., 1.), large_
     voxel_volume = np.prod(resolution)  # volume of a single voxel
 
     if structure_mask is not None:
-        total_volume = np.sum(structure_mask) * voxel_volume
+        tmp = nib.load(structure_mask).get_fdata()
+        total_volume = np.sum(tmp) * voxel_volume
     else:
         total_volume = np.prod(volume.shape) * voxel_volume
     total_volume = total_volume.item()

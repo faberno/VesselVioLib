@@ -22,6 +22,7 @@ class GraphInfo:
         prune_length: float,
         legacy: bool,
         output_dir: Optional[str] = None,
+        structure_mask = None,
         normalize:bool = True
     ):
         self.volume_path = vesselseg_path
@@ -38,6 +39,8 @@ class GraphInfo:
         self.filter_length = filter_length
         self.prune_length = prune_length
         self.output_dir = output_dir
+
+        self.structure_mask = structure_mask
         self.normalize = normalize
 
         self.filtered_vol = None
@@ -187,7 +190,7 @@ class GraphInfo:
                 volume=self.filtered_vol,
                 resolution=self.resolution,
                 large_vessel_radius=self.large_vessel_radius,
-                structure_mask=None,
+                structure_mask=self.structure_mask,
                 normalization=self.normalize,
             )
         )
@@ -202,7 +205,7 @@ class GraphInfo:
             volume=self.filtered_vol_upper,
             resolution=self.resolution,
             large_vessel_radius=self.large_vessel_radius,
-            structure_mask=None,
+            structure_mask=self.structure_mask,
             normalization=self.normalize,
         )
         features_lower = extract_graph_and_volume_features(
@@ -210,7 +213,7 @@ class GraphInfo:
             volume=self.filtered_vol_lower,
             resolution=self.resolution,
             large_vessel_radius=self.large_vessel_radius,
-            structure_mask=None,
+            structure_mask=self.structure_mask,
             normalization=self.normalize,
         )
 
