@@ -3,11 +3,14 @@ from typing import Sequence, Optional
 import numpy as np
 import igraph as ig
 import pandas as pd
-
+from util.util_jk import loadmat
 from vvl.utils.image_processing import load_volume
+from vvl.utils.graph_processing import create_graph
 from vvl.utils.io import save_graph
-from vvl.analysis import extract_graph_from_volume, extract_graph_and_volume_features
+from vvl.analysis import extract_graph_from_volume, extract_graph_and_volume_features, extract_int_features
 from vvl.features import extract_radius
+from vvl.utils.volume_processing import volume_prep, pad_volume, skeletonize, radii_calc_input
+from vvl.analysis import reconstruct_volume
 import nibabel as nib
 
 
@@ -16,6 +19,8 @@ class GraphInfo:
         self,
         vesselseg_path: str,
         layerseg_path: str,
+        recon_lf_path: str,
+        recon_hf_path: str,
         depth: int,
         resolution: Sequence[float],
         filter_length: float,
@@ -40,6 +45,9 @@ class GraphInfo:
         self.output_dir = output_dir
         self.normalize = normalize
 
+        self.recon_lf_path = recon_lf_path
+        self.recon_hf_path = recon_hf_path
+
         self.filtered_vol = None
         self.filtered_vol_lower = None
         self.filtered_vol_upper = None
@@ -49,7 +57,8 @@ class GraphInfo:
         self.features = {"name": self.name}
         self.large_vessel_radius = None
         if layerseg_path:
-            self.layerseg_vol, _ = load_volume(layerseg_path)
+            self.layerseg_vol, _ = load_volume(layerseg_path)  
+            self.layerseg_vol = self.layerseg_vol.swapaxes(0, 2) ##TODO shape verifizieren
         else:
             self.layerseg_vol = None
         self.layer_depth_map = self.compute_layer_depth_map() if layerseg_path else None
@@ -123,6 +132,7 @@ class GraphInfo:
                 upper_nodes.add(n1)
                 upper_nodes.add(n2)
 
+
         # Add node attributes for nodes that are in the graphs
         for node in lower_nodes:
             if node in self.nx_graph.nodes:
@@ -134,6 +144,7 @@ class GraphInfo:
 
         self.lower_graph = lower_graph
         self.upper_graph = upper_graph
+
 
         if self.output_dir is not None:
             g = ig.Graph.from_networkx(self.lower_graph)
@@ -156,25 +167,56 @@ class GraphInfo:
             z_dists = [z_dists[i] - self.depth_map[int(round(x_dists[i])), int(round(y_dists[i]))] for i in range(len(z_dists))]
 
             g.es["z_dist"] = z_dists
+            print(self.name + "_upper", self.output_dir)
             save_graph(g, self.name + "_upper", self.output_dir)
 
-    def split_upper_lower_volume(self, save_vols=False):
+    def split_upper_lower_volume(self, save_vols=True):
         def save_nii(V, path):
             img = nib.Nifti1Image(V, np.eye(4))
             nib.save(img, path)
 
-        H, W = self.depth_map.shape
-        z_coords = self.depth_map + self.upper_lower_depth
-        mask_upper = np.arange(self.filtered_vol.shape[2])[None, None, :] < z_coords[:, :, None]
-        mask_lower = np.arange(self.filtered_vol.shape[2])[None, None, :] > z_coords[:, :, None]
-        filtered_upper = self.filtered_vol.copy()
-        filtered_lower = self.filtered_vol.copy()
-        filtered_upper[~mask_upper] = 0
-        filtered_lower[~mask_lower] = 0
-        filtered_upper = filtered_upper[..., : np.max(z_coords)]
-        filtered_lower = filtered_lower[..., np.min(z_coords) :]
+        # H, W = self.depth_map.shape
+        # z_coords = self.depth_map + self.upper_lower_depth
+        # mask_upper = np.arange(self.filtered_vol.shape[2])[None, None, :] < z_coords[:, :, None]
+        # mask_lower = np.arange(self.filtered_vol.shape[2])[None, None, :] > z_coords[:, :, None]
+        # filtered_upper = self.filtered_vol.copy()
+        # filtered_lower = self.filtered_vol.copy()
+        # filtered_upper[~mask_upper] = 0
+        # filtered_lower[~mask_lower] = 0
+        # filtered_upper = filtered_upper[..., : np.max(z_coords)]
+        # filtered_lower = filtered_lower[..., np.min(z_coords) :]
+        # self.filtered_vol_lower = filtered_lower
+        # self.filtered_vol_upper = filtered_upper
+
+
+
+
+        volume, point_minima, point_maxima = volume_prep(self.unfiltered_vol)
+
+        volume = pad_volume(volume)
+        points = skeletonize(volume)
+
+        # skeleton_radii, vis_radii = radii_calc_input(volume, points, self.resolution, gen_vis_radii=False, verbose=False)
+
+        volume = volume[1:-1, 1:-1, 1:-1]
+        points -= 1
+
+#         ig_graph_low = create_graph(
+#         volume.shape,
+#         skeleton_radii,
+#         vis_radii,
+#         points,
+#         point_minima,
+#         verbose=True
+# )
+
+        filtered_lower = reconstruct_volume(volume, ig.Graph.from_networkx(self.lower_graph), points, self.resolution, point_minima) >= 0
+        filtered_upper = reconstruct_volume(volume, ig.Graph.from_networkx(self.upper_graph), points, self.resolution, point_minima) >= 0
         self.filtered_vol_lower = filtered_lower
         self.filtered_vol_upper = filtered_upper
+
+
+
         if save_vols:
             save_nii(filtered_lower.astype(np.uint8), os.path.join(self.output_dir, self.name + "_lower.nii.gz"))
             save_nii(filtered_upper.astype(np.uint8), os.path.join(self.output_dir, self.name + "_upper.nii.gz"))
@@ -191,14 +233,18 @@ class GraphInfo:
                 normalization=self.normalize,
             )
         )
+    
+
 
     def extract_features_upper_lower(self):
+        print(self.name)
+
         assert len(self.features) == 1
         self.prune_graph_upper_lower()
         self.split_upper_lower_volume()
 
         features_upper = extract_graph_and_volume_features(
-            G=self.upper_graph,
+            G=self.upper_graph.copy(),
             volume=self.filtered_vol_upper,
             resolution=self.resolution,
             large_vessel_radius=self.large_vessel_radius,
@@ -206,7 +252,7 @@ class GraphInfo:
             normalization=self.normalize,
         )
         features_lower = extract_graph_and_volume_features(
-            G=self.lower_graph,
+            G=self.lower_graph.copy(),
             volume=self.filtered_vol_lower,
             resolution=self.resolution,
             large_vessel_radius=self.large_vessel_radius,
@@ -214,8 +260,20 @@ class GraphInfo:
             normalization=self.normalize,
         )
 
+
+        features_int = extract_int_features(
+            volume_lay = self.layerseg_vol,
+            volume_upper = self.filtered_vol_upper,
+            volume_lower = self.filtered_vol_lower,
+            recon_lf_path = self.recon_lf_path,
+            recon_hf_path = self.recon_hf_path,
+            upper_lower_depth = self.upper_lower_depth
+        )
+
+
         # append _lower and _upper suffix to corresponding dict keys
         features_upper = {key + "_upper": value for key, value in features_upper.items()}
         features_lower = {key + "_lower": value for key, value in features_lower.items()}
         self.features.update(features_upper)
         self.features.update(features_lower)
+        self.features.update(features_int)
