@@ -202,7 +202,7 @@ for vesselseg_dir, layerseg_dir in paths__list:
             try:
                 g_i.extract_features_upper_lower()
                 feature_list.append(g_i.features)
-                # df = pd.DataFrame(g_i.features)
+                df = pd.DataFrame(g_i.features)
                 df.to_csv(os.path.join(results_folder, f"{g_i.name} features.csv"), index=False)
             except Exception as e:
                 with open(log_path, "a") as f:
