@@ -11,30 +11,14 @@ from project.pipeline.repro.qc_files import filterOptomicsScans
 
 
 paths__list = [
-# [r"C:\Users\go34nuy\data\Repro\test\processed\vessel_segmentation",
-# r"C:\Users\go34nuy\data\Repro\test\p  rocessed\epidermis_segmentation"],
-
-# [r"C:\Users\go34nuy\data\Repro\FOV\processed\vessel_segmentation",
-# r"C:\Users\go34nuy\data\Repro\FOV\processed\epidermis_segmentation"],
 
 [r"C:\Users\go34nuy\data\OptoSEM\DZMS\processed\vessel_segmentation",
 r"C:\Users\go34nuy\data\OptoSEM\DZMS\processed\epidermis_segmentation"],
-
-# [r"\\nas.ads.mwn.de\tuze\t01\AG-Ntziachristos\RSOM_Data\forErik\timeseries\processed\new_vessegs",
-# r"\\nas.ads.mwn.de\tuze\t01\AG-Ntziachristos\RSOM_Data\forErik\timeseries\processed\new_laypreds"],
-
-# [r"C:\Users\go34nuy\data\Repro\timeseries\processed\vessel_segmentation",
-# r"C:\Users\go34nuy\data\Repro\timeseries\processed\epidermis_segmentation"],
-
-# [r"D:\data\UTartu\processed\vessel_segmentation",
-#  r"D:\data\UTartu\processed\epidermis_segmentation"],
 
 ]
 
 
 for vesselseg_dir, layerseg_dir in paths__list:
-
-    # print(vesselseg_dir, layerseg_dir)
 
     filter_length = 0.250  # remove paths with a length less than this
     prune_length = 0.0  # remove connected endpoint vessels with length less than this
@@ -131,13 +115,6 @@ for vesselseg_dir, layerseg_dir in paths__list:
         subj_scans_ignore = []#filterOptomicsScans()
         segs = [seg for seg in os.listdir(vesselseg_dir) if ".nii.gz" in seg and not any(ig in seg for ig in subj_scans_ignore)] ###added to skip ignore scans
 
-
-
-        ###determine depth
-
-        # segs = segs[507:512]
-        
-        # segs = [r"\\nas.ads.mwn.de\tume\bb1\IBMI_Clinical_Studies\OPTOMICS_1.1-12-2348-EST_UTARTU\processed_ds12_dz3\vessel_segmentation\R_S_G000452190_LEG_Scan00013_img.nii.gz"]#, r"C:\Users\go34nuy\data\Repro\MMS\processed\vessel_segmentation\R_MMS018_N0_AO_r2.nii.gz"]
         for vesselseg_name in tqdm(segs):
             vesselseg_path = os.path.join(vesselseg_dir, vesselseg_name)
 
