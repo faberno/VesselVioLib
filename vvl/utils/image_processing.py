@@ -48,7 +48,7 @@ def load_volume(file, verbose=False):
 # Load nifti files
 def load_nii_volume(file):
     proxy = nibabel.load(file)
-    data = proxy.dataobj.get_unscaled().transpose()
+    data = proxy.dataobj.get_unscaled()
     if data.ndim == 4:
         data = data[0]
     return data
