@@ -26,6 +26,7 @@ class GraphInfo:
         prune_length: float,
         legacy: bool,
         output_dir: Optional[str] = None,
+        structure_mask = None,
         normalize:bool = True
     ):
         self.volume_path = vesselseg_path
@@ -42,6 +43,9 @@ class GraphInfo:
         self.filter_length = filter_length
         self.prune_length = prune_length
         self.output_dir = output_dir
+
+        self.structure_mask = structure_mask
+
         self.normalize = normalize
 
         self.recon_lf_path = recon_lf_path
@@ -131,7 +135,6 @@ class GraphInfo:
                 upper_nodes.add(n1)
                 upper_nodes.add(n2)
 
-
         # Add node attributes for nodes that are in the graphs
         for node in lower_nodes:
             if node in self.nx_graph.nodes:
@@ -143,7 +146,6 @@ class GraphInfo:
 
         self.lower_graph = lower_graph
         self.upper_graph = upper_graph
-
 
         if self.output_dir is not None:
             g = ig.Graph.from_networkx(self.lower_graph)
@@ -228,7 +230,7 @@ class GraphInfo:
                 volume=self.filtered_vol,
                 resolution=self.resolution,
                 large_vessel_radius=self.large_vessel_radius,
-                structure_mask=None,
+                structure_mask=self.structure_mask,
                 normalization=self.normalize,
             )
         )
@@ -247,7 +249,7 @@ class GraphInfo:
             volume=self.filtered_vol_upper,
             resolution=self.resolution,
             large_vessel_radius=self.large_vessel_radius,
-            structure_mask=None,
+            structure_mask=self.structure_mask,
             normalization=self.normalize,
         )
         features_lower = extract_graph_and_volume_features(
@@ -255,7 +257,7 @@ class GraphInfo:
             volume=self.filtered_vol_lower,
             resolution=self.resolution,
             large_vessel_radius=self.large_vessel_radius,
-            structure_mask=None,
+            structure_mask=self.structure_mask,
             normalization=self.normalize,
         )
 
