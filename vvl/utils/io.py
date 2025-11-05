@@ -1,6 +1,7 @@
 import os
 
 import numpy as np
+import networkx as nx
 
 def save_graph(
     g, filename, results_dir, main_thread=True, caching=False, verbose=False
@@ -39,6 +40,16 @@ def save_graph(
     file = os.path.join(results_dir, filename + "." + "graphml")
 
     # save the graph
-    g.write(file)
-
+    # try:
+    print("Vertices:", g.vcount(), "Edges:", g.ecount())
+    try:
+        if g.vcount() > 0:
+            g.write_graphml(file)
+        else:
+            print("Empty graph, skipped:", file)
+    except Exception as e:
+        print("Save failed:", e)
+    # except:
+    #     g_ = g.to_networkx()
+    #     nx.write_graphml(g_, file)
     return

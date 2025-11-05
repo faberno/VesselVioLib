@@ -1,5 +1,6 @@
 import logging
 from typing import Sequence
+import warnings
 
 import networkx as nx
 import pandas as pd
@@ -14,6 +15,7 @@ from vvl.features import (fractal_dimension, vessel_length_features, bifurcation
                           graph_metric_features, blood_volume_features, vessel_tortuosity_features)
 
 logger = logging.getLogger(__name__)
+
 
 import numpy as np
 from scipy.ndimage import distance_transform_edt
@@ -197,3 +199,93 @@ def extract_graph_and_volume_features(G, volume, resolution=(1., 1., 1.), large_
         features = {k: v for k, v in features.items() if 'experimental' not in k.lower()}
 
     return features
+
+
+
+def extract_int_features(volume_lay, volume_upper, volume_lower, recon_lf_path, recon_hf_path, upper_lower_depth):
+    
+    def layseg_int_features():
+        dist_transducer = np.mean(np.argmax(volume_lay, axis=2))
+        
+        layseg_hf = recon_hf[volume_lay == 1]
+        layseg_lf = recon_lf[volume_lay == 1]
+
+        layseg_int_max_hf = layseg_hf.max()
+        layseg_int_mean_hf = layseg_hf.mean()
+        layseg_int_max_lf = layseg_lf.max()
+        layseg_int_mean_lf = layseg_lf.mean()
+
+        depth_counts = np.sum(volume_lay > 0, axis=-1)  # shape: (y, x)
+        layseg_thickness = np.mean(depth_counts[depth_counts > 0])
+
+        return {"layseg_int_max_hf": layseg_int_max_hf, ###welche einheit, warum values so groß?
+                "layseg_int_mean_hf": layseg_int_mean_hf,
+                "layseg_int_max_lf": layseg_int_max_lf,
+                "layseg_int_mean_lf": layseg_int_mean_lf,
+                "layseg_thickness [um]": int(layseg_thickness * 3),
+                "dist_transducer [um]": int(dist_transducer * 3),
+                }
+
+    def upper_int_features():
+        shifted_vesseg_upp = np.zeros(recon_hf.shape, dtype=recon_hf.dtype)
+        depth_map_full = volume_lay.shape[2] - np.argmax(volume_lay[...,::-1], axis=2)
+        shift = np.min(depth_map_full)
+        shifted_vesseg_upp[:,:,shift:shift+volume_upper.shape[2]] = volume_upper
+
+        vesseg_upper_hf = recon_hf[shifted_vesseg_upp == 1]
+        layseg_upper_lf = recon_lf[shifted_vesseg_upp == 1]
+
+        vesseg_upper_int_max_hf = vesseg_upper_hf.max()
+        vesseg_upper_int_mean_hf = vesseg_upper_hf.mean()
+        vesseg_upper_int_max_lf = layseg_upper_lf.max()
+        vesseg_upper_int_mean_lf = layseg_upper_lf.mean()
+
+        return {"vesseg_int_max_hf_upper": vesseg_upper_int_max_hf, ###welche einheit, warum values so groß?
+                "vesseg_int_mean_hf_upper": vesseg_upper_int_mean_hf,
+                "vesseg_int_max_lf_upper": vesseg_upper_int_max_lf,
+                "vesseg_int_mean_lf_upper": vesseg_upper_int_mean_lf,
+                }
+
+
+    def lower_int_features():
+        shifted_vesseg_low = np.zeros(recon_hf.shape, dtype=recon_hf.dtype)
+        depth_map_full = volume_lay.shape[2] - np.argmax(volume_lay[...,::-1], axis=2)
+        shift = np.min(depth_map_full)+upper_lower_depth
+        shifted_vesseg_low[:,:,shift:shift+volume_lower.shape[2]] = volume_lower
+
+        vesseg_lower_hf = recon_hf[shifted_vesseg_low == 1]
+        layseg_lower_lf = recon_lf[shifted_vesseg_low == 1]
+
+        vesseg_lower_int_max_hf = vesseg_lower_hf.max()
+        vesseg_lower_int_mean_hf = vesseg_lower_hf.mean()
+        vesseg_lower_int_max_lf = layseg_lower_lf.max()
+        vesseg_lower_int_mean_lf = layseg_lower_lf.mean()
+
+        return {"vesseg_int_max_hf_lower": vesseg_lower_int_max_hf, ###welche einheit, warum values so groß?
+                "vesseg_int_mean_hf_lower": vesseg_lower_int_mean_hf,
+                "vesseg_int_max_lf_lower": vesseg_lower_int_max_lf,
+                "vesseg_int_mean_lf_lower": vesseg_lower_int_mean_lf,
+                }
+
+
+    volume_lay = np.array(volume_lay, dtype=np.float32)
+    volume_upper = np.array(volume_upper, dtype=np.float32)
+    volume_lower = np.array(volume_lower, dtype=np.float32)
+
+
+    recon_lf = scipy.io.loadmat(recon_lf_path, struct_as_record=False, squeeze_me=True)['R']
+    recon_hf = scipy.io.loadmat(recon_hf_path, struct_as_record=False, squeeze_me=True)['R']
+
+    recon_hf = np.transpose(recon_hf, axes = (1,2,0))
+    recon_lf = np.transpose(recon_lf, axes = (1,2,0))
+    recon_hf = np.clip(recon_hf, 0, np.max(recon_hf))
+    recon_lf = np.clip(recon_lf, 0, np.max(recon_lf))
+
+
+    features = {}
+    features.update(layseg_int_features())
+    features.update(upper_int_features())
+    features.update(lower_int_features())
+    
+    return features
+
