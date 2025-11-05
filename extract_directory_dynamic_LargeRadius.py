@@ -5,9 +5,8 @@ import networkx as nx
 from tqdm import tqdm
 import numpy as np
 import pandas as pd
-from util.util_jk import loadnii
+import nibabel as nib
 from vvl.utils.GraphInfo import GraphInfo
-from project.pipeline.repro.qc_files import filterOptomicsScans 
 
 
 paths__list = [
@@ -84,7 +83,7 @@ for vesselseg_dir, layerseg_dir in paths__list:
 
     def get_vp_depth(graph_path, layseg_path):
 
-        layseg = loadnii(layseg_path)
+        layseg = np.asanyarray(nib.load(layseg_path).dataobj)
         layseg = np.array(layseg, dtype=np.float32)
         layseg = layseg.transpose(1, 0, 2)
         G = nx.read_graphml(graph_path)

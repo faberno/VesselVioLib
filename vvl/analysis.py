@@ -1,9 +1,11 @@
 import logging
 from typing import Sequence
+import warnings
 
 import networkx as nx
 import pandas as pd
-from util.util_jk import loadmat
+import scipy
+
 from vvl.utils.image_processing import get_filename, prep_resolution, load_volume, binary_check, reshape_2D
 from vvl.utils.volume_processing import volume_prep, pad_volume, skeletonize, radii_calc_input
 from vvl.utils.graph_processing import create_graph, prune_input, filter_input
@@ -13,6 +15,7 @@ from vvl.features import (fractal_dimension, vessel_length_features, bifurcation
                           graph_metric_features, blood_volume_features, vessel_tortuosity_features)
 
 logger = logging.getLogger(__name__)
+
 
 import numpy as np
 from scipy.ndimage import distance_transform_edt
@@ -269,8 +272,8 @@ def extract_int_features(volume_lay, volume_upper, volume_lower, recon_lf_path, 
     volume_lower = np.array(volume_lower, dtype=np.float32)
 
 
-    recon_lf = loadmat(recon_lf_path)['R']
-    recon_hf = loadmat(recon_hf_path)['R']
+    recon_lf = scipy.io.loadmat(recon_lf_path, struct_as_record=False, squeeze_me=True)['R']
+    recon_hf = scipy.io.loadmat(recon_hf_path, struct_as_record=False, squeeze_me=True)['R']
 
     recon_hf = np.transpose(recon_hf, axes = (1,2,0))
     recon_lf = np.transpose(recon_lf, axes = (1,2,0))

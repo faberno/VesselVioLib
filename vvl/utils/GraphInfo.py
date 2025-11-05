@@ -3,7 +3,6 @@ from typing import Sequence, Optional
 import numpy as np
 import igraph as ig
 import pandas as pd
-from util.util_jk import loadmat
 from vvl.utils.image_processing import load_volume
 from vvl.utils.graph_processing import create_graph
 from vvl.utils.io import save_graph
