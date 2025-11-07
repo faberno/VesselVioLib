@@ -2,13 +2,17 @@
 import numpy as np
 import os
 from pathlib import Path
+import hdf5storage
 
 from vvl.utils.GraphInfo import GraphInfo
 
 
 # Configuration
-vesselseg_path = r"E:\CVD_backup\south_munich\DZMS\processed\vessel_preds\preds005\R_G067456110_LEG_Scan00006_img_corr_.nii.gz"  # Set this to your file path
-layerseg_path = r"E:\CVD_backup\south_munich\DZMS\processed\lay_pred\select\R_G067456110_LEG_Scan00006_img_corr__processed.nii.gz"
+vesselseg_path = r"e:\CVD_backup\south_munich\DZMS\processed\vessel_preds\preds005\arm\R_G058957050_ARM_Scan00001_img_corr_.nii.gz"  # Set this to your file path
+layerseg_path = r"e:\CVD_backup\south_munich\DZMS\processed\lay_pred\select\R_G058957050_ARM_Scan00001_img_corr__processed.nii.gz"
+
+lf_p = r"e:\CVD_backup\south_munich\DZMS\processed\recon\R_G058957050_ARM_Scan00001_img_corr_LF.mat"
+hf_p = r"e:\CVD_backup\south_munich\DZMS\processed\recon\R_G058957050_ARM_Scan00001_img_corr_HF.mat"
 
 results_folder = os.path.join(os.path.dirname(vesselseg_path), "vesselvio")
 Path(results_folder).mkdir(parents=True, exist_ok=True)
@@ -17,12 +21,12 @@ filter_length = 0.250  # remove paths with a length less than this
 prune_length = 0.0  # remove connected endpoint vessels with length less than this
 large_vessel_radius = 14.4  # Manually define at which radius vessels are considered large
 vp_depth = 70  # Depth at which to seperate the vessels into upper and lower region
-legacy = True  # If using new vesselseg like synthetic vesselseg this Flag needs to be set to false
+legacy = True # 
 
 if legacy:
-    resolution = [0.012, 0.012, 0.003]  # Legacy axes order (z,y,x)
+    resolution = [0.003, 0.012, 0.012]  # Legacy axes order (z,y,x)
 else:
-    resolution = [0.003, 0.012, 0.012]  # Fabian axes order x,y,z)
+    resolution = [0.012, 0.012, 0.003]  # Fabian axes order (x,y,z)
 
 graph_info = GraphInfo(
     vesselseg_path,
@@ -34,6 +38,19 @@ graph_info = GraphInfo(
     legacy=legacy,
     output_dir=results_folder,
 )
+
+matfile_hf = hdf5storage.loadmat(
+    hf_p, options=hdf5storage.Options(structs_as_dicts=True)
+)
+hf = np.array(matfile_hf["R"]).swapaxes(0, 1)
+
+matfile_lf = hdf5storage.loadmat(
+    lf_p, options=hdf5storage.Options(structs_as_dicts=True)
+)
+lf = np.array(matfile_lf["R"]).swapaxes(0, 1)
+
+graph_info.recon = np.stack([lf, hf], axis=0)
+
 
 graph_info.extract_graph()
 

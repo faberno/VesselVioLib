@@ -6,8 +6,8 @@ import pandas as pd
 from vvl.utils.image_processing import load_volume
 from vvl.utils.graph_processing import create_graph
 from vvl.utils.io import save_graph
-from vvl.analysis import extract_graph_from_volume, extract_graph_and_volume_features, extract_int_features
-from vvl.features import extract_radius
+from vvl.analysis import extract_graph_from_volume, extract_graph_and_volume_features
+from vvl.features import extract_radius,extract_int_features
 from vvl.utils.volume_processing import volume_prep, pad_volume, skeletonize, radii_calc_input
 from vvl.analysis import reconstruct_volume
 import nibabel as nib
@@ -18,8 +18,6 @@ class GraphInfo:
         self,
         vesselseg_path: str,
         layerseg_path: str,
-        recon_lf_path: str,
-        recon_hf_path: str,
         depth: int,
         resolution: Sequence[float],
         filter_length: float,
@@ -31,10 +29,11 @@ class GraphInfo:
     ):
         self.volume_path = vesselseg_path
         self.structure_mask = structure_mask
+        self.recon = None
         self.name = os.path.basename(vesselseg_path).replace(".nii.gz", "")
         self.unfiltered_vol, _ = load_volume(vesselseg_path)
         self.legacy = legacy
-        if not legacy:
+        if legacy:
             self.unfiltered_vol = self.unfiltered_vol.swapaxes(0, 2)
 
         self.graph_features = {}
@@ -45,9 +44,6 @@ class GraphInfo:
         self.prune_length = prune_length
         self.output_dir = output_dir
         self.normalize = normalize
-
-        self.recon_lf_path = recon_lf_path
-        self.recon_hf_path = recon_hf_path
 
         self.filtered_vol = None
         self.filtered_vol_lower = None
@@ -60,6 +56,7 @@ class GraphInfo:
         if layerseg_path:
             self.layerseg_vol, _ = load_volume(layerseg_path)  
             self.layerseg_vol = self.layerseg_vol.swapaxes(0, 2) ##TODO shape verifizieren
+            assert self.layerseg_vol.shape[0] < self.layerseg_vol.shape[2], "Layer segmentation is wider than it is deep. Probably wrong axes used"
         else:
             self.layerseg_vol = None
         self.layer_depth_map = self.compute_layer_depth_map() if layerseg_path else None
@@ -174,21 +171,6 @@ class GraphInfo:
             img = nib.Nifti1Image(V, np.eye(4))
             nib.save(img, path)
 
-        # H, W = self.depth_map.shape
-        # z_coords = self.depth_map + self.upper_lower_depth
-        # mask_upper = np.arange(self.filtered_vol.shape[2])[None, None, :] < z_coords[:, :, None]
-        # mask_lower = np.arange(self.filtered_vol.shape[2])[None, None, :] > z_coords[:, :, None]
-        # filtered_upper = self.filtered_vol.copy()
-        # filtered_lower = self.filtered_vol.copy()
-        # filtered_upper[~mask_upper] = 0
-        # filtered_lower[~mask_lower] = 0
-        # filtered_upper = filtered_upper[..., : np.max(z_coords)]
-        # filtered_lower = filtered_lower[..., np.min(z_coords) :]
-        # self.filtered_vol_lower = filtered_lower
-        # self.filtered_vol_upper = filtered_upper
-
-
-
 
         volume, point_minima, point_maxima = volume_prep(self.unfiltered_vol)
 
@@ -264,8 +246,7 @@ class GraphInfo:
             volume_lay = self.layerseg_vol,
             volume_upper = self.filtered_vol_upper,
             volume_lower = self.filtered_vol_lower,
-            recon_lf_path = self.recon_lf_path,
-            recon_hf_path = self.recon_hf_path,
+            recon = self.recon,
             upper_lower_depth = self.upper_lower_depth
         )
 
