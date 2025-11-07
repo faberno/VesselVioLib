@@ -26,10 +26,8 @@ for vesselseg_dir, layerseg_dir in paths__list:
     legacy = True  # If using new vesselseg like synthetic vesselseg this Flag needs to be set to true  #####for synthetic vesseg set to False, else True
     normalize = False # If vessel signal is already cropped to normalized volume then don't need to normalize
 
-    if legacy:
-        resolution = [0.012, 0.012, 0.003]  # Legacy axes order (z,y,x)
-    else:
-        resolution = [0.003, 0.012, 0.012]  # Fabian axes order x,y,z)
+    resolution = [0.012, 0.012, 0.003] 
+
 
 
     def find_layseg_for_vesseg(vesseg_path, layseg_dir):
@@ -65,43 +63,6 @@ for vesselseg_dir, layerseg_dir in paths__list:
         return g_i
 
 
-    def flatten_coords(coords, surface, depth):
-        coords = np.asarray(coords)
-        yx = coords[:,[0,1]].round().astype(int)
-        shift = depth - surface[yx[:,0], yx[:,1]]
-        coords[:,2] += shift
-        return coords
-    
-    def surfaceToMask(surface:np.ndarray, Nz:int, width:int=1):
-        Nx, Ny = surface.shape
-        surface = np.clip(surface, 0, Nz-1)
-        mask = np.zeros(shape=(Nx, Ny, Nz), dtype=np.int8)
-        for i in range(Nx):
-            for j in range(Ny):
-                mask[i, j, int(surface[i, j]):int(surface[i, j] + width)]=1
-        return mask
-
-    def get_vp_depth(graph_path, layseg_path):
-
-        layseg = np.asanyarray(nib.load(layseg_path).dataobj)
-        layseg = np.array(layseg, dtype=np.float32)
-        layseg = layseg.transpose(1, 0, 2)
-        G = nx.read_graphml(graph_path)
-        nodes = []
-        for n, d in G.nodes(data=True):
-            x, y, z = float(d['X']), float(d['Y']), float(d['Z'])
-            nodes.append([y, z, x])   # napari expects (z,y,x)
-
-        junction_surface = layseg.shape[2] - 1 - np.argmax(np.flip(layseg, axis=2), axis=2)
-
-        nodes_flat = flatten_coords(nodes, junction_surface, 0)
-        z_vals = nodes_flat[:, 2]
-
-        counts, bins = np.histogram(z_vals, bins=30)
-        threshold = 0.3 * counts.max()
-        z_thr = bins[np.where(counts >= threshold)[0][-1]]
-        vp_depth = np.max(abs(z_vals))-abs(z_thr)
-        return int(vp_depth)
      
 
     if __name__ == "__main__":
@@ -124,14 +85,11 @@ for vesselseg_dir, layerseg_dir in paths__list:
             graph_path = p.parents[1] / "features" / "Graphs" / f"{base}.graphml"
             layseg_path = p.parents[1] / "epidermis_segmentation" / f"{base}.nii.gz"
 
-            vp_depth = get_vp_depth(graph_path, layseg_path)
+            vp_depth = None # get_vp_depth(graph_path, layseg_path)
 
             graph_info = GraphInfo(
                 vesselseg_path,
                 find_layseg_for_vesseg(vesselseg_path, layerseg_dir),
-                recon_lf_path,
-                recon_hf_path,
-                depth=vp_depth,
                 resolution=resolution,
                 filter_length=filter_length,
                 prune_length=prune_length,

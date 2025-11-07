@@ -8,7 +8,7 @@ from vvl.utils.GraphInfo import GraphInfo
 
 
 # Configuration
-vesselseg_path = r"e:\CVD_backup\south_munich\DZMS\processed\vessel_preds\preds005\arm\R_G058957050_ARM_Scan00001_img_corr_.nii.gz"  # Set this to your file path
+vesselseg_path = r"e:\CVD_backup\south_munich\DZMS\processed\vessel_preds\pred003\R_G058957050_ARM_Scan00001_img_corr_.nii.gz"  # Set this to your file path
 layerseg_path = r"e:\CVD_backup\south_munich\DZMS\processed\lay_pred\select\R_G058957050_ARM_Scan00001_img_corr__processed.nii.gz"
 
 lf_p = r"e:\CVD_backup\south_munich\DZMS\processed\recon\R_G058957050_ARM_Scan00001_img_corr_LF.mat"
@@ -21,21 +21,18 @@ filter_length = 0.250  # remove paths with a length less than this
 prune_length = 0.0  # remove connected endpoint vessels with length less than this
 large_vessel_radius = 14.4  # Manually define at which radius vessels are considered large
 vp_depth = 70  # Depth at which to seperate the vessels into upper and lower region
-legacy = True # 
+legacy_vessel = False # 
 
-if legacy:
-    resolution = [0.003, 0.012, 0.012]  # Legacy axes order (z,y,x)
-else:
-    resolution = [0.012, 0.012, 0.003]  # Fabian axes order (x,y,z)
+
+resolution = [0.012, 0.012, 0.003] 
 
 graph_info = GraphInfo(
     vesselseg_path,
     layerseg_path,
-    depth=vp_depth,
     resolution=resolution,
     filter_length=filter_length,
     prune_length=prune_length,
-    legacy=legacy,
+    legacy=legacy_vessel,
     output_dir=results_folder,
 )
 

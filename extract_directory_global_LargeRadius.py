@@ -14,6 +14,10 @@ resolution = [0.003, 0.012, 0.012]
 filter_length = 0.250
 prune_length = 0.0
 large_vessel_radius = 14.4
+legacy = False
+
+resolution = [0.012, 0.012, 0.003] 
+
 
 
 def extract_graph_wrapper(g_i):
