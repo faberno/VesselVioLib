@@ -5,17 +5,17 @@ from multiprocessing import Pool
 from tqdm import tqdm
 import numpy as np
 import pandas as pd
-
+from util.util_jk import loadmat
 from vvl.utils.GraphInfo import GraphInfo
 
-vesselseg_dir = r"D:\data\big_dataset_hailong\Suhanyaa\vessel_preds\preds005"
-layerseg_dir = r"D:\data\big_dataset_hailong\Suhanyaa\lay_preds\preds002_pp"
+vesselseg_dir = r"C:\Users\go34nuy\data\Repro\Positions\processed\vessel_segmentation"
+layerseg_dir = r"C:\Users\go34nuy\data\Repro\Positions\processed\epidermis_segmentation"
 
 filter_length = 0.250  # remove paths with a length less than this
 prune_length = 0.0  # remove connected endpoint vessels with length less than this
 large_vessel_radius = 0.018  # Manually define at which radius vessels are considered large
 vp_depth = 40  # Depth at which to seperate the vessels into upper and lower region
-legacy = False  # If using new vesselseg like synthetic vesselseg this Flag needs to be set to true
+legacy = True  # If using new vesselseg like synthetic vesselseg this Flag needs to be set to true
 normalize = False # If vessel signal is already cropped to normalized volume then don't need to normalize
 #Large vessel radius is 0.015997390253347205
 
@@ -44,6 +44,8 @@ def extract_graph_wrapper(g_i):
     g_i.extract_graph()
     return g_i
 
+def save_graph_wrapper(g_i):
+    g_i.save_graphs()
 
 def extract_radii_wrapper(g_i):
     return g_i.extract_radius()
@@ -69,9 +71,18 @@ if __name__ == "__main__":
     segs = [seg for seg in os.listdir(vesselseg_dir) if ".nii.gz" in seg]
     for vesselseg_name in tqdm(segs):
         vesselseg_path = os.path.join(vesselseg_dir, vesselseg_name)
+
+        p = Path(vesselseg_path)
+        base = p.stem[:-4] 
+        recon_lf_path = p.parents[1] / "recon" / f"{base}LF.mat"
+        recon_hf_path = p.parents[1] / "recon" / f"{base}HF.mat"
+        recon_lf = loadmat(recon_lf_path)['R']
+        recon_hf = loadmat(recon_hf_path)['R']
+
         graph_info = GraphInfo(
             vesselseg_path,
             find_layseg_for_vesseg(vesselseg_path, layerseg_dir),
+            recon = [recon_lf, recon_hf],
             resolution=resolution,
             filter_length=filter_length,
             prune_length=prune_length,
@@ -104,18 +115,40 @@ if __name__ == "__main__":
 
     # Extract size-dependent features
     print("Extracting size-dependent  features...")
-    with Pool() as pool:
-        results = list(
-            tqdm(pool.imap(extract_sizefeats_wrapper, graph_infos), total=len(graph_infos))
-        )
-    graph_infos.clear()
-    graph_infos.extend(results)
+    # with Pool() as pool:
+    #     results = list(
+    #         tqdm(pool.imap(extract_sizefeats_wrapper, graph_infos), total=len(graph_infos))
+    #     )
+    # graph_infos.clear()
+    # graph_infos.extend(results)
 
-    # for g_i in tqdm(graph_infos):
-    #     g_i.extract_features_upper_lower()
+    feature_list = []
+    log_path = os.path.join(results_folder, "log.txt")
+    for g_i in tqdm(graph_infos):
+        try:  
+            g_i.extract_features_upper_lower()
+            feature_list.append(g_i.features)
+            # df = pd.DataFrame(g_i.features, index=[0])
+            # df.to_csv(os.path.join(results_folder, f"{g_i.name} features.csv"), index=False)
+        except Exception as e:
+            with open(log_path, "a") as f:
+                f.write(f"{g_i.name} | {type(e).__name__}: {e}\n")
+                print("FAILED: ", e)
+
+    # feature_list = [g_i.features for g_i in graph_infos]
 
 
-    feature_list = [g_i.features for g_i in graph_infos]
     df = pd.DataFrame(feature_list)
     df.to_csv(os.path.join(results_folder, "features.csv"), index=False)
     df.to_excel(os.path.join(results_folder, "features.xlsx"), index=False)
+
+
+
+    print("Saving graphs...")
+    with Pool(4) as pool:
+        try: 
+            _ = list(tqdm(pool.imap(save_graph_wrapper, graph_infos), total=len(graph_infos)))
+        except Exception as e:
+            with open(log_path, "a") as f:
+                f.write(f"{g_i.name} | {type(e).__name__}: {e}\n")
+                print("FAILED: ", e)

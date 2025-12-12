@@ -41,7 +41,7 @@ def save_graph(
 
     # save the graph
     # try:
-    print("Vertices:", g.vcount(), "Edges:", g.ecount())
+    # print("Vertices:", g.vcount(), "Edges:", g.ecount())
     try:
         if g.vcount() > 0:
             g.write_graphml(file)

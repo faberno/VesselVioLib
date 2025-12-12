@@ -466,6 +466,15 @@ def vessel_tortuosity_features(G: nx.Graph, large_vessel_radius: float):
 #     median_roundness_std = np.median([data["roundnessStd"] for _, _, data in G.edges(data=True)])
 #     return {"median_roundness": median_roundness, "median_roundness_std": median_roundness_std}
 
+def get_surface_angle(surface):
+    ### angle is computed as square root of the squared x and y slopes (a and b) of a fitted plane.
+    nx, ny = surface.shape
+    x, y = np.meshgrid(np.arange(ny), np.arange(nx))# coordinate grid
+    X = np.column_stack((x.ravel(), y.ravel(), np.ones(nx*ny)))# flatten
+    Zf = surface.ravel()
+    a, b, c = np.linalg.lstsq(X, Zf, rcond=None)[0]# least squares plane fit
+    theta = np.degrees(np.arctan(np.sqrt(a*a + b*b))) #tilt angle
+    return int(theta)
 
 def extract_int_features(
     volume_lay,
@@ -475,7 +484,9 @@ def extract_int_features(
     upper_lower_depth,
 ):
     def layseg_int_features(lf, hf, volume_lay):
-        dist_transducer = np.mean(np.argmax(volume_lay, axis=2))
+        surface = np.argmax(volume_lay, axis=2)
+        dist_transducer = np.mean(surface)
+        surface_angle = get_surface_angle(surface)
 
         layseg_int_max_hf = hf.max()
         layseg_int_mean_hf = hf.mean()
@@ -492,6 +503,7 @@ def extract_int_features(
             "layseg_int_mean_lf": layseg_int_mean_lf,
             "layseg_thickness [um]": int(layseg_thickness * 3),
             "dist_transducer [um]": int(dist_transducer * 3),
+            "surface_angle": surface_angle,
         }
 
     def vesseg_int_feats(lf, hf):
@@ -515,8 +527,8 @@ def extract_int_features(
     volume_lower = np.array(volume_lower, dtype=np.float32)
 
 
-    # recon_hf = np.transpose(recon_hf, axes=(1, 2, 0))
-    # recon_lf = np.transpose(recon_lf, axes=(1, 2, 0))
+    recon_hf = np.transpose(recon_hf, axes=(1, 2, 0))
+    recon_lf = np.transpose(recon_lf, axes=(1, 2, 0))
     recon_hf = np.clip(recon_hf, 0, np.max(recon_hf))
     recon_lf = np.clip(recon_lf, 0, np.max(recon_lf))
 

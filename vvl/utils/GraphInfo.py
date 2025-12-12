@@ -23,6 +23,7 @@ class GraphInfo:
         self,
         vesselseg_path: str,
         layerseg_path: str,
+        recon:list,
         resolution: Sequence[float],
         filter_length: float,
         prune_length: float,
@@ -34,7 +35,7 @@ class GraphInfo:
     ):
         self.volume_path = vesselseg_path
         self.structure_mask = structure_mask
-        self.recon = None
+        self.recon = recon
         self.name = os.path.basename(vesselseg_path).replace(".nii.gz", "")
         self.unfiltered_vol, _ = load_volume(vesselseg_path)
         self.legacy = legacy
@@ -76,8 +77,8 @@ class GraphInfo:
             self.unfiltered_vol, self.resolution, self.filter_length, self.prune_length
         )
 
-        if self.output_dir is not None:
-            save_graph(graph, self.name, self.output_dir)
+        # if self.output_dir is not None:
+        #     save_graph(graph, self.name, self.output_dir)
 
         self.nx_graph = graph_nx
         self.i_graph = graph
@@ -111,6 +112,14 @@ class GraphInfo:
         z_offset = self.depth_map[x, y]
         z_offset += self.upper_lower_depth
         return z >= z_offset
+
+    def save_graphs(self):
+        g = ig.Graph.from_networkx(self.nx_graph)
+        save_graph(g, self.name, self.output_dir)
+        g = ig.Graph.from_networkx(self.lower_graph)
+        save_graph(g, self.name + "_lower", self.output_dir)
+        g = ig.Graph.from_networkx(self.upper_graph)
+        save_graph(g, self.name + "_upper", self.output_dir)
 
     def flatten_coords(self, coords, surface, depth):
         coords = np.asarray(coords)
@@ -225,7 +234,7 @@ class GraphInfo:
             ]
 
             g.es["z_dist"] = z_dists
-            save_graph(g, self.name + "_lower", self.output_dir)
+            # save_graph(g, self.name + "_lower", self.output_dir)
 
             g = ig.Graph.from_networkx(self.upper_graph)
             try:
@@ -252,8 +261,8 @@ class GraphInfo:
                 g.es["z_dist"] = z_dists
             except:
                 pass
-            print(self.name + "_upper", self.output_dir)
-            save_graph(g, self.name + "_upper", self.output_dir)
+            # print(self.name + "_upper", self.output_dir)
+            # save_graph(g, self.name + "_upper", self.output_dir)
 
     def split_upper_lower_volume(self, save_vols=False):
 
@@ -336,13 +345,13 @@ class GraphInfo:
             normalization=self.normalize,
         )
 
-        # features_int = extract_int_features(
-        #     volume_lay=self.layerseg_vol,
-        #     volume_upper=self.filtered_vol_upper,
-        #     volume_lower=self.filtered_vol_lower,
-        #     recon=self.recon,
-        #     upper_lower_depth=self.upper_lower_depth,
-        # )
+        features_int = extract_int_features(
+            volume_lay=self.layerseg_vol,
+            volume_upper=self.filtered_vol_upper,
+            volume_lower=self.filtered_vol_lower,
+            recon=self.recon,
+            upper_lower_depth=self.upper_lower_depth,
+        )
 
         # append _lower and _upper suffix to corresponding dict keys
         features_upper = {
@@ -353,4 +362,4 @@ class GraphInfo:
         }
         self.features.update(features_upper)
         self.features.update(features_lower)
-        # self.features.update(features_int)
+        self.features.update(features_int)
