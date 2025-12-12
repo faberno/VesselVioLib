@@ -48,7 +48,7 @@ def assign_centerline_indices(volume, centerline_mask, centerline_voxels, spacin
     return output
 
 
-def reconstruct_volume(volume, graph, points, resolution, point_minima):
+def reconstruct_volume(volume, graph, points, resolution, point_minima, strict: bool = False, use_unreduced_nodes=False):
     def get_mask_from_subset(A, B):
         # Convert A to a structured array for fast matching
         A_struct = A.view([('', A.dtype)] * A.shape[1])
@@ -81,14 +81,21 @@ def reconstruct_volume(volume, graph, points, resolution, point_minima):
         nearest = tuple(nearest_coords[coord])
         assign_volume[coord] = coord_to_idx.get(nearest, -1)  # -1 if somehow not found
 
-    filtered_points = np.array([v['v_coords'] for v in graph.vs])
+    if not use_unreduced_nodes:
+        filtered_points = np.array([v['v_coords'] for v in graph.vs])
+    else:
+        filtered_points = np.vstack(graph.es['original_edge_positions']).astype(int)
     filter_mask = get_mask_from_subset(points + point_minima, filtered_points)
+
+    if strict and filter_mask.sum() != len(filtered_points):
+        raise ValueError("Not all graph points were found")
+
     filter_indices = np.where(~filter_mask)[0]
     volume_mask = np.isin(assign_volume, filter_indices)
     assign_volume[volume_mask] = -1
 
     return assign_volume
-
+ 
 
 def extract_graph_from_volume(
         volume: np.ndarray,

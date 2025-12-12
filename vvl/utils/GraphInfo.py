@@ -60,9 +60,9 @@ class GraphInfo:
         self.large_vessel_radius = None
         if layerseg_path:
             self.layerseg_vol, _ = load_volume(layerseg_path)
-            self.layerseg_vol = self.layerseg_vol.swapaxes(
-                0, 2
-            )  ##TODO shape verifizieren
+            # self.layerseg_vol = self.layerseg_vol.swapaxes(
+            #     0, 2
+            # )  ##TODO shape verifizieren
             assert self.layerseg_vol.shape[0] < self.layerseg_vol.shape[2], (
                 "Layer segmentation is wider than it is deep. Probably wrong axes used"
             )
@@ -154,6 +154,8 @@ class GraphInfo:
         threshold = 0.3 * counts.max()
         z_thr = bins[np.where(counts >= threshold)[0][-1]]
         vp_depth = np.max(abs(z_vals)) - abs(z_thr)
+        if vp_depth < 1:
+            raise ValueError("VP depth cannot be zero")
         self.upper_lower_depth = int(vp_depth)
 
     def prune_graph_upper_lower(self):
@@ -226,36 +228,39 @@ class GraphInfo:
             save_graph(g, self.name + "_lower", self.output_dir)
 
             g = ig.Graph.from_networkx(self.upper_graph)
-            tmp = [edge_positions for edge_positions in g.es["original_edge_positions"]]
-            z_dists = [
-                sum(sub_array[2] for sub_array in tmp_new) / len(tmp_new)
-                for tmp_new in tmp
-            ]
-            x_dists = [
-                sum(sub_array[0] for sub_array in tmp_new) / len(tmp_new)
-                for tmp_new in tmp
-            ]
-            # x_dists = [self.depth_map.shape[0] - 1 - x for x in x_dists]
-            y_dists = [
-                sum(sub_array[1] for sub_array in tmp_new) / len(tmp_new)
-                for tmp_new in tmp
-            ]
-            z_dists = [
-                z_dists[i]
-                - self.depth_map[int(round(x_dists[i])), int(round(y_dists[i]))]
-                for i in range(len(z_dists))
-            ]
+            try:
+                tmp = [edge_positions for edge_positions in g.es["original_edge_positions"]]
+                z_dists = [
+                    sum(sub_array[2] for sub_array in tmp_new) / len(tmp_new)
+                    for tmp_new in tmp
+                ]
+                x_dists = [
+                    sum(sub_array[0] for sub_array in tmp_new) / len(tmp_new)
+                    for tmp_new in tmp
+                ]
+                # x_dists = [self.depth_map.shape[0] - 1 - x for x in x_dists]
+                y_dists = [
+                    sum(sub_array[1] for sub_array in tmp_new) / len(tmp_new)
+                    for tmp_new in tmp
+                ]
+                z_dists = [
+                    z_dists[i]
+                    - self.depth_map[int(round(x_dists[i])), int(round(y_dists[i]))]
+                    for i in range(len(z_dists))
+                ]
 
-            g.es["z_dist"] = z_dists
+                g.es["z_dist"] = z_dists
+            except:
+                pass
             print(self.name + "_upper", self.output_dir)
             save_graph(g, self.name + "_upper", self.output_dir)
 
-    def split_upper_lower_volume(self, save_vols=True):
+    def split_upper_lower_volume(self, save_vols=False):
+
         def save_nii(V, path):
             img = nib.Nifti1Image(V, np.eye(4))
             nib.save(img, path)
-
-        volume, point_minima, point_maxima = volume_prep(self.unfiltered_vol)
+        volume, point_minima, point_maxima = volume_prep(self.filtered_vol)
 
         volume = pad_volume(volume)
         points = skeletonize(volume)
@@ -274,26 +279,10 @@ class GraphInfo:
         #         verbose=True
         # )
 
-        filtered_lower = (
-            reconstruct_volume(
-                volume,
-                ig.Graph.from_networkx(self.lower_graph),
-                points,
-                self.resolution,
-                point_minima,
-            )
-            >= 0
-        )
-        filtered_upper = (
-            reconstruct_volume(
-                volume,
-                ig.Graph.from_networkx(self.upper_graph),
-                points,
-                self.resolution,
-                point_minima,
-            )
-            >= 0
-        )
+        filtered_lower = reconstruct_volume(volume, ig.Graph.from_networkx(self.lower_graph), points, self.resolution,
+                                            point_minima, use_unreduced_nodes=True) >= 0
+        filtered_upper = reconstruct_volume(volume, ig.Graph.from_networkx(self.upper_graph), points, self.resolution,
+                                            point_minima, use_unreduced_nodes=True) >= 0
         self.filtered_vol_lower = filtered_lower
         self.filtered_vol_upper = filtered_upper
 
@@ -328,7 +317,7 @@ class GraphInfo:
         self.features.update({"upper_lower_depth": self.upper_lower_depth})
 
         self.prune_graph_upper_lower()
-        self.split_upper_lower_volume()
+        self.split_upper_lower_volume(save_vols=True)
 
         features_upper = extract_graph_and_volume_features(
             G=self.upper_graph.copy(),
@@ -347,13 +336,13 @@ class GraphInfo:
             normalization=self.normalize,
         )
 
-        features_int = extract_int_features(
-            volume_lay=self.layerseg_vol,
-            volume_upper=self.filtered_vol_upper,
-            volume_lower=self.filtered_vol_lower,
-            recon=self.recon,
-            upper_lower_depth=self.upper_lower_depth,
-        )
+        # features_int = extract_int_features(
+        #     volume_lay=self.layerseg_vol,
+        #     volume_upper=self.filtered_vol_upper,
+        #     volume_lower=self.filtered_vol_lower,
+        #     recon=self.recon,
+        #     upper_lower_depth=self.upper_lower_depth,
+        # )
 
         # append _lower and _upper suffix to corresponding dict keys
         features_upper = {
@@ -364,4 +353,4 @@ class GraphInfo:
         }
         self.features.update(features_upper)
         self.features.update(features_lower)
-        self.features.update(features_int)
+        # self.features.update(features_int)

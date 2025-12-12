@@ -280,22 +280,32 @@ def skan_features(image_volume: np.ndarray, total_volume: float):
             "num_junctions": 0.0,
         }
 
-    info = skan.summarize(
-        skan.Skeleton(skeletonize(image_volume, method="lee")), separator="-"
-    )
-    branch_data = info.loc[info["branch-distance"] > 9]
+    skel = skeletonize(image_volume, method="lee")
+    if skel.sum() <= 10:
+        print("No skeleton found, skipping.")
+        return {
+        "branch_number": 0,
+        "branch_j2e_total": 0,
+        "branch_j2j_total": 0,
+        "num_junctions": 0,}
 
-    branch_number = len(branch_data["branch-distance"].values)
-    branch_j2e_total = np.sum(branch_data["branch-type"].values == 1).item()
-    branch_j2j_total = np.sum(branch_data["branch-type"].values == 2).item()
-    num_junctions = np.unique(branch_data["node-id-src"].values).shape[0]
+    else:
+        info = skan.summarize(
+            skan.Skeleton(skel), separator="-"
+        )
+        branch_data = info.loc[info["branch-distance"] > 9]
 
-    return {
-        "branch_number": branch_number / total_volume,
-        "branch_j2e_total": branch_j2e_total / total_volume,
-        "branch_j2j_total": branch_j2j_total / total_volume,
-        "num_junctions": num_junctions / total_volume,
-    }
+        branch_number = len(branch_data["branch-distance"].values)
+        branch_j2e_total = np.sum(branch_data["branch-type"].values == 1).item()
+        branch_j2j_total = np.sum(branch_data["branch-type"].values == 2).item()
+        num_junctions = np.unique(branch_data["node-id-src"].values).shape[0]
+
+        return {
+            "branch_number": branch_number / total_volume,
+            "branch_j2e_total": branch_j2e_total / total_volume,
+            "branch_j2j_total": branch_j2j_total / total_volume,
+            "num_junctions": num_junctions / total_volume,
+        }
 
 
 def cycle_features(G: nx.Graph, total_volume: float):
