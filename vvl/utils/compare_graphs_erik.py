@@ -305,25 +305,116 @@ def get_similar_edges(e1, g1, g2):
     return similars 
 
 
-def determine_connections(similarites):
-    es = list(similarites.keys())
+def determine_connections(similarities):# -> dict[Any, Any]:
+    """
+    For each connected component, find the longest path and return
+    only the similarities for edges on those longest paths.
+    """
+    es = list(similarities.keys())
     ns = set([e[0] for e in es] + [e[1] for e in es])
+    
     g = nx.Graph()
     g.add_nodes_from(ns)
     g.add_edges_from(es)
-
-    # detect if there are multiple connected components
+    
     components = list(nx.connected_components(g))
-    if len(components) > 1:
-       return False
-    # Check if one of the nodes is a bifurcation
-    for n in g.nodes:
-        if g.degree(n) > 2:
-            # Throw out the shortest connection even across multiple edges
+    
+    # Collect edges from longest path in each component
+    longest_path_edges = set()
+    
+    for component in components:
+        subgraph = g.subgraph(component).copy()
+        longest_path = find_longest_path(subgraph, similarities)
+        
+        # Convert path (node list) to edges
+        for i in range(len(longest_path) - 1):
+            u, v = longest_path[i], longest_path[i + 1]
+            # Store in canonical order to match similarities keys
+            edge = (u, v) if (u, v) in similarities else (v, u)
+            longest_path_edges.add(edge)
+    
+    # Filter similarities to only longest path edges
+    return {e: v for e, v in similarities.items() if e in longest_path_edges}
 
 
+def find_longest_path(g, similarities):
+    """
+    Find the longest path in a graph, using edge weights from similarities.
+    Works for graphs with bifurcations by exploring all endpoint-to-endpoint paths.
+    """
+    # Find endpoints (degree 1) and bifurcations (degree > 2)
+    endpoints = [n for n in g.nodes if g.degree(n) == 1]
     
+    # If no endpoints (cycle), pick arbitrary start
+    if not endpoints:
+        endpoints = [list(g.nodes)[0]]
     
+    def get_edge_weight(u, v):
+        """Get path length from similarities, default to 1."""
+        for key in [(u, v), (v, u)]:
+            if key in similarities:
+                sim = similarities[key]
+                # Use a length metric - adapt based on your similarities structure
+                if isinstance(sim, dict) and 'length' in sim:
+                    return sim['length']
+                elif isinstance(sim, dict) and 'max_min_distance' in sim:
+                    return 1  # or use some other metric
+        return 1
+    
+    def path_length(path):
+        """Total length of a path."""
+        total = 0
+        for i in range(len(path) - 1):
+            total += get_edge_weight(path[i], path[i + 1])
+        return total
+    
+    # Find longest path using DFS from each endpoint
+    longest = []
+    longest_len = 0
+    
+    for start in endpoints:
+        # DFS to find all paths to other endpoints
+        stack = [(start, [start], set([start]))]
+        
+        while stack:
+            node, path, visited = stack.pop()
+            
+            # Check if this is an endpoint (other than start) or dead end
+            neighbors = [n for n in g.neighbors(node) if n not in visited]
+            
+            if not neighbors:
+                # End of path - check if longest
+                plen = path_length(path)
+                if plen > longest_len:
+                    longest = path
+                    longest_len = plen
+            else:
+                for neighbor in neighbors:
+                    stack.append((neighbor, path + [neighbor], visited | {neighbor}))
+    
+    return longest
+
+
+def find_longest_path_simple(g):
+    """
+    Simpler alternative: longest path = diameter for tree-like structures.
+    Uses BFS twice to find the longest shortest path.
+    Only works correctly for trees (no cycles).
+    """
+    if len(g.nodes) == 0:
+        return []
+    
+    # BFS from arbitrary node to find farthest node
+    start = list(g.nodes)[0]
+    distances = nx.single_source_shortest_path_length(g, start)
+    farthest = max(distances, key=distances.get)
+    
+    # BFS from farthest to find the actual farthest pair
+    distances = nx.single_source_shortest_path_length(g, farthest)
+    other_end = max(distances, key=distances.get)
+    
+    # Get the actual path
+    return nx.shortest_path(g, farthest, other_end)
     
 
 def detect_split_edges(e1,similarites,g):
@@ -379,8 +470,8 @@ def create_unmatched_edges_graph(
     surplus = nx.Graph()
 
     sources = [
-        ("g1", graph1, unmatched_edges_g1),
-        ("g2", graph2, unmatched_edges_g2),
+        ("g2", graph2, unmatched_edges_g1),
+        ("g1", graph1, unmatched_edges_g2),
     ]
 
     for prefix, graph, unmatched_edges in sources:
@@ -424,19 +515,27 @@ matched_es1 = set()
 unmatched_es1 = set()
 for e1 in tqdm(g1.edges):
     similars = get_similar_edges(e1, g1, g2)
-    if len(similars) == 0:
-        unmatched_es1.add(e1)
-    else:
-        matched_es1.add(e1)
+    if len(similars) != 0:
+        similars_connected = determine_connections(similars)
+        for e in similars_connected.keys():
+            matched_es1.add(e)
 
 matched_es2 = set()
 unmatched_es2 = set()
 for e1 in tqdm(g2.edges):
     similars = get_similar_edges(e1, g2, g1)
-    if len(similars) == 0:
+    if len(similars) != 0:
+        similars_connected = determine_connections(similars)
+        for e in similars_connected.keys():
+            matched_es2.add(e)
+
+for e1 in g2.edges:
+    if e1 not in matched_es1:
+        unmatched_es1.add(e1)
+for e1 in g1.edges:
+    if e1 not in matched_es2:
         unmatched_es2.add(e1)
-    else:
-        matched_es2.add(e1)
+
 
 surplus_graph = create_unmatched_edges_graph(g1, g2, matched_es1, matched_es2)
 output_path = os.path.join(os.path.dirname(graph_gt), "Graphs", "test1.graphml")
