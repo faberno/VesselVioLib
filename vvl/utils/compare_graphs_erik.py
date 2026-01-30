@@ -14,6 +14,11 @@ import plotly.graph_objects as go
 import pyvista as pv
 import numpy as np
 
+def load_graph(input_path):
+    with open(input_path, "rb") as f:
+        g = pickle.load(f)
+        g = nx.Graph(g.to_networkx())
+    return g
 
 def save_graph(g, output_path):
     # Remove attributes that save_graph deletes
@@ -33,12 +38,7 @@ def save_graph(g, output_path):
     nx.write_graphml(g, output_path)
 
 
-def load_graph(filepath: str) -> nx.Graph:
-    """Load a graph from GraphML file."""
-    G = nx.read_graphml(filepath)
-    if isinstance(G, (nx.MultiGraph, nx.MultiDiGraph)):
-        G = nx.Graph(G)
-    return G
+
 
 
 def viz_graph(G):
@@ -639,28 +639,30 @@ def create_unmatched_edges_graph(
 graph_gt = r"E:\sr_data\532\cuff_analysis\graph_comparison_cuff_base\original\vesselvio\Graphs\R_20190216163532_AngelosHyperamia_base_1_RSOM50_wl1_corr_v_rgb_pred.pkl"
 graph_i25 = r"E:\sr_data\532\cuff_analysis\graph_comparison_cuff_base\i25\vesselvio\Graphs\R_20190216163532_AngelosHyperamia_base_1_RSOM50_wl1_corr_v_rgb_pred.pkl"
 
-with open(graph_gt, "rb") as f:
-    g1 = pickle.load(f)
-    g1 = nx.Graph(g1.to_networkx())
-with open(graph_i25, "rb") as f:
-    g2 = pickle.load(f)
-    g2 = nx.Graph(g2.to_networkx())
+g1 = load_graph(graph_gt)
+g2 = load_graph(graph_i25)
+
+distance = 15
+matched_es1 = set()
+matched_es2 = set()
+matched_es1_dict = dict()
+matched_es2_dict = dict()
 
 # Find edges in g2 that match edges in g1
-matched_es2 = set()
 for e1 in tqdm(g1.edges, desc="Matching g1 edges to g2"):
-    matched = get_matched_edges_for_edge(e1, g1, g2, max_distance=15.0)
-    matched_es2.update(matched)
+    matched = get_matched_edges_for_edge(e1, g1, g2, max_distance=distance)
+    if matched:
+        matched_es1.add(e1)  # Mark source edge as matched too
+        matched_es2.update(matched)
 
 # Find edges in g1 that match edges in g2
-matched_es1 = set()
 for e2 in tqdm(g2.edges, desc="Matching g2 edges to g1"):
-    matched = get_matched_edges_for_edge(e2, g2, g1, max_distance=15.0)
-    matched_es1.update(matched)
+    matched = get_matched_edges_for_edge(e2, g2, g1, max_distance=distance)
+    if matched:
+        matched_es2.add(e2)  # Mark source edge as matched too
+        matched_es1.update(matched)
 
 
-# TODO: In case multiple edges were matched to the same edge, we need to to determine the best match
-# BUT: In dense cases, a edge may be present twice in different matches. If both matched vessels have the same vessel as intermediary step
 
 
 # Compute unmatched edges (edges that weren't matched by the other graph)
@@ -672,7 +674,6 @@ for e1 in g1.edges:
 for e2 in g2.edges:
     if e2 not in matched_es2 and (e2[1],e2[0]) not in matched_es2:
         unmatched_es2.add(e2)
-
 surplus_graph = create_unmatched_edges_graph(g1, g2, unmatched_es1, unmatched_es2)
 viz_matched_unmatched(g1, g2, matched_es1, matched_es2, unmatched_es1, unmatched_es2)
 
