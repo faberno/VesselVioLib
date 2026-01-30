@@ -15,7 +15,7 @@ import pyvista as pv
 import numpy as np
 
 
-def save_graph(g,output_path):
+def save_graph(g, output_path):
     # Remove attributes that save_graph deletes
     attrs_to_remove_nodes = ["v_coords"]
     attrs_to_remove_edges = ["radii_list", "coords_list", "original_edge_positions", "original_edge_paths"]
@@ -32,12 +32,14 @@ def save_graph(g,output_path):
 
     nx.write_graphml(g, output_path)
 
+
 def load_graph(filepath: str) -> nx.Graph:
     """Load a graph from GraphML file."""
     G = nx.read_graphml(filepath)
     if isinstance(G, (nx.MultiGraph, nx.MultiDiGraph)):
         G = nx.Graph(G)
     return G
+
 
 def viz_graph(G):
 
@@ -77,10 +79,9 @@ def viz_graph(G):
         g2_tubes = g2_mesh.tube(radius=0.8)
         plotter.add_mesh(g2_tubes, color="#457B9D", label="Graph 2")  # Blue
 
-
     plotter.add_legend()
     plotter.enable_anti_aliasing()
-    plotter.show()
+    plotter.show(auto_close=False, interactive_update=True)
 
 
 def viz_matched_unmatched(
@@ -115,11 +116,7 @@ def viz_matched_unmatched(
 
     def get_pos(graph):
         return {
-            n: np.array([
-                float(graph.nodes[n]["X"]),
-                float(graph.nodes[n]["Y"]),
-                float(graph.nodes[n]["Z"])
-            ])
+            n: np.array([float(graph.nodes[n]["X"]), float(graph.nodes[n]["Y"]), float(graph.nodes[n]["Z"])])
             for n in graph.nodes()
         }
 
@@ -146,8 +143,8 @@ def viz_matched_unmatched(
 
     # Define colors for each group
     colors = {
-        "matched_g1": "#2E8B57",    # Sea green
-        "matched_g2": "#4169E1",    # Royal blue
+        "matched_g1": "#2E8B57",  # Sea green
+        "matched_g2": "#4169E1",  # Royal blue
         "unmatched_g1": "#DC143C",  # Crimson
         "unmatched_g2": "#FF8C00",  # Dark orange
     }
@@ -171,7 +168,8 @@ def viz_matched_unmatched(
 
     plotter.add_legend()
     plotter.enable_anti_aliasing()
-    plotter.show()    
+    plotter.show(auto_close=False, interactive_update=True)
+
 
 def get_node_coords(graph: nx.Graph, node_id: str) -> np.ndarray:
     """Extract XYZ coordinates from a node."""
@@ -284,7 +282,6 @@ def compare_edges(G1, edge1, G2, edge2, angle_threshold=15.0, distance_threshold
     # If proximity is good then edge_similarity may be okay as long as one of the vessels is extremely small.
     if is_similar == 0.0 and prox_ok and (len_e1 < edge_case_small_len or len_e2 < edge_case_small_len):
         is_similar = 0.5
-
     return {
         "angle_deg": angle,
         "angles_similar": angle <= angle_threshold,
@@ -302,37 +299,37 @@ def get_similar_edges(e1, g1, g2):
         similarity = compare_edges(g1, e1, g2, e2)
         if similarity["is_similar"] > 0:
             similars[e2] = similarity
-    return similars 
+    return similars
 
 
-def determine_connections(similarities):# -> dict[Any, Any]:
+def determine_connections(similarities):  # -> dict[Any, Any]:
     """
     For each connected component, find the longest path and return
     only the similarities for edges on those longest paths.
     """
     es = list(similarities.keys())
     ns = set([e[0] for e in es] + [e[1] for e in es])
-    
+
     g = nx.Graph()
     g.add_nodes_from(ns)
     g.add_edges_from(es)
-    
+
     components = list(nx.connected_components(g))
-    
+
     # Collect edges from longest path in each component
     longest_path_edges = set()
-    
+
     for component in components:
         subgraph = g.subgraph(component).copy()
         longest_path = find_longest_path(subgraph, similarities)
-        
+
         # Convert path (node list) to edges
         for i in range(len(longest_path) - 1):
             u, v = longest_path[i], longest_path[i + 1]
             # Store in canonical order to match similarities keys
             edge = (u, v) if (u, v) in similarities else (v, u)
             longest_path_edges.add(edge)
-    
+    # TODO: If one of the matched vessels is extremely short allow for a larger max distance when selecting candidates but do strict check here if final selection is valid
     # Filter similarities to only longest path edges
     return {e: v for e, v in similarities.items() if e in longest_path_edges}
 
@@ -344,44 +341,44 @@ def find_longest_path(g, similarities):
     """
     # Find endpoints (degree 1) and bifurcations (degree > 2)
     endpoints = [n for n in g.nodes if g.degree(n) == 1]
-    
+
     # If no endpoints (cycle), pick arbitrary start
     if not endpoints:
         endpoints = [list(g.nodes)[0]]
-    
+
     def get_edge_weight(u, v):
         """Get path length from similarities, default to 1."""
         for key in [(u, v), (v, u)]:
             if key in similarities:
                 sim = similarities[key]
                 # Use a length metric - adapt based on your similarities structure
-                if isinstance(sim, dict) and 'length' in sim:
-                    return sim['length']
-                elif isinstance(sim, dict) and 'max_min_distance' in sim:
+                if isinstance(sim, dict) and "length" in sim:
+                    return sim["length"]
+                elif isinstance(sim, dict) and "max_min_distance" in sim:
                     return 1  # or use some other metric
         return 1
-    
+
     def path_length(path):
         """Total length of a path."""
         total = 0
         for i in range(len(path) - 1):
             total += get_edge_weight(path[i], path[i + 1])
         return total
-    
+
     # Find longest path using DFS from each endpoint
     longest = []
     longest_len = 0
-    
+
     for start in endpoints:
         # DFS to find all paths to other endpoints
         stack = [(start, [start], set([start]))]
-        
+
         while stack:
             node, path, visited = stack.pop()
-            
+
             # Check if this is an endpoint (other than start) or dead end
             neighbors = [n for n in g.neighbors(node) if n not in visited]
-            
+
             if not neighbors:
                 # End of path - check if longest
                 plen = path_length(path)
@@ -391,7 +388,7 @@ def find_longest_path(g, similarities):
             else:
                 for neighbor in neighbors:
                     stack.append((neighbor, path + [neighbor], visited | {neighbor}))
-    
+
     return longest
 
 
@@ -403,24 +400,24 @@ def find_longest_path_simple(g):
     """
     if len(g.nodes) == 0:
         return []
-    
+
     # BFS from arbitrary node to find farthest node
     start = list(g.nodes)[0]
     distances = nx.single_source_shortest_path_length(g, start)
     farthest = max(distances, key=distances.get)
-    
+
     # BFS from farthest to find the actual farthest pair
     distances = nx.single_source_shortest_path_length(g, farthest)
     other_end = max(distances, key=distances.get)
-    
+
     # Get the actual path
     return nx.shortest_path(g, farthest, other_end)
-    
 
-def detect_split_edges(e1,similarites,g):
+
+def detect_split_edges(e1, similarites, g):
     """
     Sometimes a edge in one graph will be split into multiple edges in the other. This heuristic tries to account for this.
-    
+
     :param e1: original edge to compare.
     :param similarites: Dictionary with similarities for each edge in g2 compared
     :param g: graph to compare to.
@@ -429,8 +426,6 @@ def detect_split_edges(e1,similarites,g):
     lens = [sim["edge_lengths"][1] for sim in similarites.values()]
     if max(lens) > similarites[0]["edge_lengths"][0]:
         raise ValueError("Can only detect split vessels for elements smaller than the origin vessel.")
-    
-
 
 
 def create_unmatched_edges_graph(
@@ -470,8 +465,8 @@ def create_unmatched_edges_graph(
     surplus = nx.Graph()
 
     sources = [
-        ("g2", graph2, unmatched_edges_g1),
-        ("g1", graph1, unmatched_edges_g2),
+        ("g1", graph1, unmatched_edges_g1),
+        ("g2", graph2, unmatched_edges_g2),
     ]
 
     for prefix, graph, unmatched_edges in sources:
@@ -485,11 +480,7 @@ def create_unmatched_edges_graph(
                     attr["source"] = prefix
                     attr["original_id"] = node
                     # Create v_coords from X, Y, Z if not present
-                    attr["v_coords"] = np.array([
-                        float(attr["Z"]),
-                        float(attr["Y"]),
-                        float(attr["X"])
-                    ])
+                    attr["v_coords"] = np.array([float(attr["Z"]), float(attr["Y"]), float(attr["X"])])
                     surplus.add_node(node_id, **attr)
 
             # Add the edge
@@ -511,33 +502,31 @@ with open(graph_i25, "rb") as f:
     g2 = pickle.load(f)
     g2 = nx.Graph(g2.to_networkx())
 
-matched_es1 = set()
-unmatched_es1 = set()
+matched_es2 = set()
 for e1 in tqdm(g1.edges):
     similars = get_similar_edges(e1, g1, g2)
     if len(similars) != 0:
         similars_connected = determine_connections(similars)
         for e in similars_connected.keys():
-            matched_es1.add(e)
+            matched_es2.add(e)
 
-matched_es2 = set()
-unmatched_es2 = set()
+matched_es1 = set()
 for e1 in tqdm(g2.edges):
     similars = get_similar_edges(e1, g2, g1)
     if len(similars) != 0:
         similars_connected = determine_connections(similars)
         for e in similars_connected.keys():
-            matched_es2.add(e)
+            matched_es1.add(e)
 
-for e1 in g2.edges:
+unmatched_es1 = set()
+unmatched_es2 = set()
+for e1 in g1.edges:
     if e1 not in matched_es1:
         unmatched_es1.add(e1)
-for e1 in g1.edges:
+for e1 in g2.edges:
     if e1 not in matched_es2:
         unmatched_es2.add(e1)
 
-
 surplus_graph = create_unmatched_edges_graph(g1, g2, matched_es1, matched_es2)
-output_path = os.path.join(os.path.dirname(graph_gt), "Graphs", "test1.graphml")
-viz_matched_unmatched(g1,g2,matched_es1,matched_es2,unmatched_es1,unmatched_es2)
+viz_matched_unmatched(g1, g2, matched_es1, matched_es2, unmatched_es1, unmatched_es2)
 print("wow")
