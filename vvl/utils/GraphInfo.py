@@ -60,9 +60,9 @@ class GraphInfo:
         self.large_vessel_radius = None
         if layerseg_path:
             self.layerseg_vol, _ = load_volume(layerseg_path)
-            # self.layerseg_vol = self.layerseg_vol.swapaxes(
-            #     0, 2
-            # )  ##TODO shape verifizieren
+            self.layerseg_vol = self.layerseg_vol.swapaxes(
+                0, 2
+            )  ##TODO shape verifizieren
             assert self.layerseg_vol.shape[0] < self.layerseg_vol.shape[2], (
                 "Layer segmentation is wider than it is deep. Probably wrong axes used"
             )

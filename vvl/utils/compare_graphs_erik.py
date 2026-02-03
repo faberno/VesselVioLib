@@ -13,12 +13,15 @@ import networkx as nx
 import plotly.graph_objects as go
 import pyvista as pv
 import numpy as np
+import ast
+
 
 def load_graph(input_path):
     with open(input_path, "rb") as f:
         g = pickle.load(f)
         g = nx.Graph(g.to_networkx())
     return g
+
 
 def save_graph(g, output_path):
     # Remove attributes that save_graph deletes
@@ -36,9 +39,6 @@ def save_graph(g, output_path):
                 del g.edges[u, v][attr]
 
     nx.write_graphml(g, output_path)
-
-
-
 
 
 def viz_graph(G):
@@ -357,6 +357,31 @@ def build_candidate_subgraph(graph: nx.Graph, candidate_nodes: set) -> nx.Graph:
     return subgraph
 
 
+def get_edge_length(g, u, v):
+    """Get physical length of an edge."""
+    edge_data = g.edges[u, v]
+    if "coords_list" in edge_data:
+        coords = edge_data["coords_list"]
+        if isinstance(coords, str):
+            coords = ast.literal_eval(coords)
+        coords = np.array(coords)
+        if len(coords) >= 2:
+            # Sum of segment lengths
+            return np.sum(np.linalg.norm(np.diff(coords, axis=0), axis=1))
+    # Fallback: distance between endpoints
+    p1 = get_node_coords(g, u)
+    p2 = get_node_coords(g, v)
+    return np.linalg.norm(p2 - p1)
+
+
+def path_length(path, subgraph):
+    """Total physical length of a path."""
+    total = 0
+    for i in range(len(path) - 1):
+        total += get_edge_length(subgraph, path[i], path[i + 1])
+    return total
+
+
 def find_longest_path_in_subgraph(subgraph: nx.Graph) -> list:
     """
     Find the longest path in a subgraph using DFS from endpoints.
@@ -384,30 +409,6 @@ def find_longest_path_in_subgraph(subgraph: nx.Graph) -> list:
     if not endpoints:
         endpoints = [list(subgraph.nodes)[0]]
 
-    def get_edge_length(g, u, v):
-        """Get physical length of an edge."""
-        edge_data = g.edges[u, v]
-        if "coords_list" in edge_data:
-            coords = edge_data["coords_list"]
-            if isinstance(coords, str):
-                import ast
-                coords = ast.literal_eval(coords)
-            coords = np.array(coords)
-            if len(coords) >= 2:
-                # Sum of segment lengths
-                return np.sum(np.linalg.norm(np.diff(coords, axis=0), axis=1))
-        # Fallback: distance between endpoints
-        p1 = get_node_coords(g, u)
-        p2 = get_node_coords(g, v)
-        return np.linalg.norm(p2 - p1)
-
-    def path_length(path):
-        """Total physical length of a path."""
-        total = 0
-        for i in range(len(path) - 1):
-            total += get_edge_length(subgraph, path[i], path[i + 1])
-        return total
-
     # Find longest path using DFS from each endpoint
     longest = []
     longest_len = 0
@@ -420,7 +421,7 @@ def find_longest_path_in_subgraph(subgraph: nx.Graph) -> list:
             neighbors = [n for n in subgraph.neighbors(node) if n not in visited]
 
             if not neighbors:
-                plen = path_length(path)
+                plen = path_length(path, subgraph)
                 if plen > longest_len:
                     longest = path
                     longest_len = plen
@@ -554,7 +555,7 @@ def get_matched_edges_for_edge(
         #     matched_edges.add((n1, n2))
         # elif g2.has_edge(n2, n1):
         #     matched_edges.add((n2, n1))
-        matched_edges.add((n2,n1))
+        matched_edges.add((n2, n1))
     return matched_edges
 
 
@@ -652,29 +653,65 @@ matched_es2_dict = dict()
 for e1 in tqdm(g1.edges, desc="Matching g1 edges to g2"):
     matched = get_matched_edges_for_edge(e1, g1, g2, max_distance=distance)
     if matched:
-        matched_es1.add(e1)  # Mark source edge as matched too
-        matched_es2.update(matched)
+        matched_es1_dict[e1] = matched
 
 # Find edges in g1 that match edges in g2
 for e2 in tqdm(g2.edges, desc="Matching g2 edges to g1"):
     matched = get_matched_edges_for_edge(e2, g2, g1, max_distance=distance)
     if matched:
-        matched_es2.add(e2)  # Mark source edge as matched too
-        matched_es1.update(matched)
+        matched_es2_dict[e2] = matched
+
+to_delete_es1 = set()
+for e1 in matched_es1_dict:
+    for e2_matches in matched_es2_dict.values():
+        if e1 in e2_matches or (e1[1], e1[0]) in e2_matches:
+            # If e1 is connecting multiple vessels then only throw it out if the other match is longer or connecting more vessels
+            if len(matched_es1_dict[e1]) > 1:
+                if len(e2_matches) <= len(matched_es1_dict[e1]):
+                    e1_len = np.sum([get_edge_length(g2, e[0], e[1]) for e in matched_es1_dict[e1]])
+                    e2_len = np.sum([get_edge_length(g1, e[0], e[1]) for e in e2_matches])
+                    if e1_len > e2_len:
+                        continue
+
+            to_delete_es1.add(e1)
+            break
+for k in to_delete_es1:
+    del matched_es1_dict[k]
 
 
+to_delete_es2 = set()
+for e1 in matched_es2_dict:
+    for e2_matches in matched_es1_dict.values():
+        if e1 in e2_matches or (e1[1], e1[0]) in e2_matches:
+            # If e1 is connecting multiple vessels then only throw it out if the other match is longer
+            if len(matched_es2_dict[e1]) > 1:
+                if len(e2_matches) <= len(matched_es2_dict[e1]):
+                    e1_len = np.sum([get_edge_length(g1, e[0], e[1]) for e in matched_es2_dict[e1]])
+                    e2_len = np.sum([get_edge_length(g2, e[0], e[1]) for e in e2_matches])
+                    if e1_len > e2_len:
+                        continue
+            to_delete_es2.add(e1)
+            break
+for k in to_delete_es2:
+    del matched_es2_dict[k]
 
+matched_es1 = set(list(matched_es1_dict.keys()))
+for ele in matched_es2_dict.values():
+    matched_es1.update(ele)
+matched_es2 = set(list(matched_es2_dict.keys()))
+for ele in matched_es1_dict.values():
+    matched_es2.update(ele)
 
 # Compute unmatched edges (edges that weren't matched by the other graph)
 unmatched_es1 = set()
 unmatched_es2 = set()
 for e1 in g1.edges:
-    if e1 not in matched_es1 and (e1[1],e1[0]) not in matched_es1:
+    if e1 not in matched_es1 and (e1[1], e1[0]) not in matched_es1:
         unmatched_es1.add(e1)
 for e2 in g2.edges:
-    if e2 not in matched_es2 and (e2[1],e2[0]) not in matched_es2:
+    if e2 not in matched_es2 and (e2[1], e2[0]) not in matched_es2:
         unmatched_es2.add(e2)
 surplus_graph = create_unmatched_edges_graph(g1, g2, unmatched_es1, unmatched_es2)
 viz_matched_unmatched(g1, g2, matched_es1, matched_es2, unmatched_es1, unmatched_es2)
-
+ged = nx.graph_edit_distance(g1,g2)
 print("Done")
