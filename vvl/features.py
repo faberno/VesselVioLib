@@ -460,6 +460,91 @@ def vessel_tortuosity_features(G: nx.Graph, large_vessel_radius: float):
     }
 
 
+def vessel_count_features(G: nx.Graph, large_vessel_radius: float):
+    """Counts vessels by greedily tracing paths from the thickest edges.
+
+    Starting from the edge with the largest radius, greedily follows the
+    highest-radius neighboring edge from each endpoint until reaching a
+    leaf or dead end. This traced path counts as one vessel. The edges
+    are then removed and the process repeats until no edges remain.
+
+    Parameters
+    ----------
+    G : nx.Graph
+        NetworkX graph of the vessel network.
+    large_vessel_radius : float
+        Threshold radius for large/small vessel classification.
+
+    Returns
+    -------
+    dict
+        vessel_count: Total number of traced vessels.
+        large_vessel_count: Vessels whose seed edge has radius >= threshold.
+        small_vessel_count: Vessels whose seed edge has radius < threshold.
+    """
+    if G.number_of_edges() == 0:
+        return {
+            "vessel_count": 0,
+            "large_vessel_count": 0,
+            "small_vessel_count": 0,
+        }
+
+    H = G.copy()
+    vessel_count = 0
+    large_vessel_count = 0
+    small_vessel_count = 0
+
+    while H.number_of_edges() > 0:
+        # Find edge with maximum radius — seed of the next vessel
+        max_edge = max(H.edges(data=True), key=lambda e: e[2]["radius_avg"])
+        u, v = max_edge[0], max_edge[1]
+        seed_radius = max_edge[2]["radius_avg"]
+        edge_data = [(max_edge[2]["radius_avg"],max_edge[2]["length"])]
+        # Track edges belonging to this vessel
+        vessel_edges = {frozenset({u, v})}
+
+        # Greedily trace from a node, collecting highest-radius edges
+        def trace(start):
+            current = start
+            while True:
+                candidates = []
+                for _, neighbor, data in H.edges(current, data=True):
+                    if frozenset({current, neighbor}) not in vessel_edges:
+                        candidates.append((neighbor, data))
+                if not candidates:
+                    break
+                best_neighbor, neighbor_dat = max(
+                    candidates, key=lambda x: x[1]["radius_avg"]
+                )
+                vessel_edges.add(frozenset({current, best_neighbor}))
+                edge_data.append((neighbor_dat["radius_avg"],neighbor_dat["length"]))
+                current = best_neighbor
+
+        trace(u)
+        trace(v)
+
+        total_len = sum(e[1] for e in edge_data)
+        mean_radius = sum(e[0]*(e[1]/total_len) for e in edge_data)
+        # Classify vessel by seed radius
+        if mean_radius >= large_vessel_radius:
+            large_vessel_count += 1
+        else:
+            small_vessel_count += 1
+        vessel_count += 1
+
+        # Remove traced edges from graph
+        for edge in vessel_edges:
+            e = tuple(edge)
+            if H.has_edge(*e):
+                H.remove_edge(*e)
+
+    return {
+        "vessel_count": vessel_count,
+        "large_vessel_count": large_vessel_count,
+        "small_vessel_count": small_vessel_count,
+    }
+
+
 # def vessel_roundness_features(G: nx.Graph):
 #     """Calculates the median roundness and median standard deviation of the vessels."""
 #     median_roundness = np.median([data["roundnessAvg"] for _, _, data in G.edges(data=True)])

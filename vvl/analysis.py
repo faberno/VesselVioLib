@@ -10,7 +10,7 @@ from vvl.utils.image_processing import get_filename, prep_resolution, load_volum
 from vvl.utils.volume_processing import volume_prep, pad_volume, skeletonize, radii_calc_input
 from vvl.utils.graph_processing import create_graph, prune_input, filter_input
 from vvl.utils.feature_processing import feature_input, process_single_graph
-from vvl.features import (fractal_dimension, vessel_length_features, bifurcation_features,
+from vvl.features import (fractal_dimension, vessel_length_features, bifurcation_features,vessel_count_features,
                           skan_features, cycle_features, component_length_features, radius_features,
                           graph_metric_features, blood_volume_features, vessel_tortuosity_features)
 
@@ -201,7 +201,7 @@ def extract_graph_and_volume_features(G, volume, resolution=(1., 1., 1.), large_
     features.update(radius_features(G, large_vessel_radius))
     features.update(graph_metric_features(G, large_vessel_radius))
     features.update(vessel_tortuosity_features(G, large_vessel_radius))
-    
+    features.update(vessel_count_features(G,large_vessel_radius))
     if not include_experimental:
         features = {k: v for k, v in features.items() if 'experimental' not in k.lower()}
 
