@@ -1,5 +1,5 @@
 import os
-
+import pickle
 import numpy as np
 import networkx as nx
 
@@ -18,6 +18,11 @@ def save_graph(
     g.vs["Y"] = points[:, 1]
     g.vs["Z"] = points[:, 0]
     
+
+    out_p = os.path.join(results_dir,filename + ".pkl")
+    with open(out_p, "wb") as f:
+        pickle.dump(g, f)
+
 
     if main_thread:
         del g.vs["v_radius"]

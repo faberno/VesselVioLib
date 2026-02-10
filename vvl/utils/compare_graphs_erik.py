@@ -196,7 +196,7 @@ def get_edge_direction(G, edge):
     return direction / norm
 
 
-def angular_similarity(G1, edge1, G2, edge2):
+def angular_similarity(G1, edge1, G2, edge2):# -> Any:
     """
     Compute angular similarity between two edges.
     Returns angle in degrees (0 = parallel, 90 = perpendicular).
@@ -230,67 +230,67 @@ def get_edge_points(G, edge):
     return coords
 
 
-def check_proximity(G1, edge1, G2, edge2, max_distance=5.0):
-    """
-    Check if all points on the shorter edge are within max_distance
-    of at least one point on the longer edge.
+# def check_proximity(G1, edge1, G2, edge2, max_distance=5.0):
+#     """
+#     Check if all points on the shorter edge are within max_distance
+#     of at least one point on the longer edge.
 
-    Returns:
-        is_similar: bool - True if all points satisfy the criterion
-        max_min_dist: float - the maximum of the minimum distances
-        distances: array - minimum distance for each point on shorter edge
-    """
-    points1 = get_edge_points(G1, edge1)
-    points2 = get_edge_points(G2, edge2)
+#     Returns:
+#         is_similar: bool - True if all points satisfy the criterion
+#         max_min_dist: float - the maximum of the minimum distances
+#         distances: array - minimum distance for each point on shorter edge
+#     """
+#     points1 = get_edge_points(G1, edge1)
+#     points2 = get_edge_points(G2, edge2)
 
-    # Determine shorter and longer
-    len1 = np.linalg.norm(points1[-1] - points1[0])
-    len2 = np.linalg.norm(points2[-1] - points2[0])
+#     # Determine shorter and longer
+#     len1 = np.linalg.norm(points1[-1] - points1[0])
+#     len2 = np.linalg.norm(points2[-1] - points2[0])
 
-    if len1 <= len2:
-        shorter, longer = points1, points2
-    else:
-        shorter, longer = points2, points1
+#     if len1 <= len2:
+#         shorter, longer = points1, points2
+#     else:
+#         shorter, longer = points2, points1
 
-    # For each point on shorter, find min distance to any point on longer
-    min_distances = np.zeros(len(shorter))
-    for i, pt in enumerate(shorter):
-        dists = np.linalg.norm(longer - pt, axis=1)
-        min_distances[i] = np.min(dists)
+#     # For each point on shorter, find min distance to any point on longer
+#     min_distances = np.zeros(len(shorter))
+#     for i, pt in enumerate(shorter):
+#         dists = np.linalg.norm(longer - pt, axis=1)
+#         min_distances[i] = np.min(dists)
 
-    max_min_dist = np.max(min_distances)
-    is_similar = max_min_dist <= max_distance
+#     max_min_dist = np.max(min_distances)
+#     is_similar = max_min_dist <= max_distance
 
-    return is_similar, max_min_dist, min_distances, len1, len2
+#     return is_similar, max_min_dist, min_distances, len1, len2
 
 
-def compare_edges(G1, edge1, G2, edge2, angle_threshold=15.0, distance_threshold=5.0, edge_case_small_len=10.0):
-    """
-    Full comparison of two edges.
+# def compare_edges(G1, edge1, G2, edge2, angle_threshold=15.0, distance_threshold=5.0, edge_case_small_len=10.0):
+#     """
+#     Full comparison of two edges.
 
-    Returns dict with:
-        - angle_deg: angle between edges in degrees
-        - angles_similar: True if angle <= threshold
-        - proximity_satisfied: True if all points within distance
-        - max_min_distance: worst-case minimum distance
-        - is_similar: True if both criteria met
-    """
-    angle = angular_similarity(G1, edge1, G2, edge2)
-    prox_ok, max_min_dist, min_dists, len_e1, len_e2 = check_proximity(G1, edge1, G2, edge2, distance_threshold)
+#     Returns dict with:
+#         - angle_deg: angle between edges in degrees
+#         - angles_similar: True if angle <= threshold
+#         - proximity_satisfied: True if all points within distance
+#         - max_min_distance: worst-case minimum distance
+#         - is_similar: True if both criteria met
+#     """
+#     angle = angular_similarity(G1, edge1, G2, edge2)
+#     prox_ok, max_min_dist, min_dists, len_e1, len_e2 = check_proximity(G1, edge1, G2, edge2, distance_threshold)
 
-    is_similar = 1.0 if (angle <= angle_threshold) and prox_ok else 0.0
-    # If proximity is good then edge_similarity may be okay as long as one of the vessels is extremely small.
-    if is_similar == 0.0 and prox_ok and (len_e1 < edge_case_small_len or len_e2 < edge_case_small_len):
-        is_similar = 0.5
-    return {
-        "angle_deg": angle,
-        "angles_similar": angle <= angle_threshold,
-        "proximity_satisfied": prox_ok,
-        "max_min_distance": max_min_dist,
-        "min_dists": min_dists,
-        "edge_lengths": (len_e1, len_e2),
-        "is_similar": is_similar,
-    }
+#     is_similar = 1.0 if (angle <= angle_threshold) and prox_ok else 0.0
+#     # If proximity is good then edge_similarity may be okay as long as one of the vessels is extremely small.
+#     if is_similar == 0.0 and prox_ok and (len_e1 < edge_case_small_len or len_e2 < edge_case_small_len):
+#         is_similar = 0.5
+#     return {
+#         "angle_deg": angle,
+#         "angles_similar": angle <= angle_threshold,
+#         "proximity_satisfied": prox_ok,
+#         "max_min_distance": max_min_dist,
+#         "min_dists": min_dists,
+#         "edge_lengths": (len_e1, len_e2),
+#         "is_similar": is_similar,
+#     }
 
 
 def find_nearby_nodes(edge_coords: np.ndarray, graph: nx.Graph, max_distance: float) -> set:
@@ -538,12 +538,18 @@ def get_matched_edges_for_edge(
     if len(longest_path) < 2:
         return set()
 
+
+    # TODO: Maybe dont just get longest path but best angular matching path as well...
+    
     # Crop to match original edge endpoints
     start_coord = get_node_coords(g1, u)
     end_coord = get_node_coords(g1, v)
     cropped_path = crop_path_to_endpoints(longest_path, g2, start_coord, end_coord)
 
     if len(cropped_path) < 2:
+        return set()
+
+    if angular_similarity(g1, (u,v), g2, (cropped_path[0],cropped_path[1])) > 15:
         return set()
 
     # Convert path to edges
@@ -639,9 +645,12 @@ def create_unmatched_edges_graph(
 
 graph_gt = r"E:\sr_data\532\cuff_analysis\graph_comparison_cuff_base\original\vesselvio\Graphs\R_20190216163532_AngelosHyperamia_base_1_RSOM50_wl1_corr_v_rgb_pred.pkl"
 graph_i25 = r"E:\sr_data\532\cuff_analysis\graph_comparison_cuff_base\i25\vesselvio\Graphs\R_20190216163532_AngelosHyperamia_base_1_RSOM50_wl1_corr_v_rgb_pred.pkl"
+graph_i16 = r"e:\sr_data\532\cuff_analysis\graph_comparison_cuff_base\i16\vesselvio\R_20190216163532_AngelosHyperamia_base_1_RSOM50_wl1_corr_v_rgb_pred.pkl"
+graph_i9 = r"e:\sr_data\532\cuff_analysis\graph_comparison_cuff_base\i9\vesselvio\R_20190216163532_AngelosHyperamia_base_1_RSOM50_wl1_corr_v_rgb_pred.pkl"
+
 
 g1 = load_graph(graph_gt)
-g2 = load_graph(graph_i25)
+g2 = load_graph(graph_i9)
 
 distance = 15
 matched_es1 = set()
@@ -667,11 +676,13 @@ for e1 in matched_es1_dict:
         if e1 in e2_matches or (e1[1], e1[0]) in e2_matches:
             # If e1 is connecting multiple vessels then only throw it out if the other match is longer or connecting more vessels
             if len(matched_es1_dict[e1]) > 1:
-                if len(e2_matches) <= len(matched_es1_dict[e1]):
+                if len(e2_matches) == len(matched_es1_dict[e1]): # If equal number of edges connected keep longer pair
                     e1_len = np.sum([get_edge_length(g2, e[0], e[1]) for e in matched_es1_dict[e1]])
                     e2_len = np.sum([get_edge_length(g1, e[0], e[1]) for e in e2_matches])
                     if e1_len > e2_len:
                         continue
+                if len(e2_matches) <= len(matched_es1_dict[e1]): # Keep if longer
+                    continue
 
             to_delete_es1.add(e1)
             break
@@ -685,15 +696,20 @@ for e1 in matched_es2_dict:
         if e1 in e2_matches or (e1[1], e1[0]) in e2_matches:
             # If e1 is connecting multiple vessels then only throw it out if the other match is longer
             if len(matched_es2_dict[e1]) > 1:
-                if len(e2_matches) <= len(matched_es2_dict[e1]):
+                if len(e2_matches) == len(matched_es2_dict[e1]):
                     e1_len = np.sum([get_edge_length(g1, e[0], e[1]) for e in matched_es2_dict[e1]])
                     e2_len = np.sum([get_edge_length(g2, e[0], e[1]) for e in e2_matches])
                     if e1_len > e2_len:
                         continue
+                if len(e2_matches) <= len(matched_es2_dict[e1]): # Keep if longer
+                    continue
             to_delete_es2.add(e1)
             break
 for k in to_delete_es2:
     del matched_es2_dict[k]
+
+
+get_matched_edges_for_edge((23,79), g1, g2, max_distance=distance) # = {(30, 65)}
 
 matched_es1 = set(list(matched_es1_dict.keys()))
 for ele in matched_es2_dict.values():
@@ -713,5 +729,14 @@ for e2 in g2.edges:
         unmatched_es2.add(e2)
 surplus_graph = create_unmatched_edges_graph(g1, g2, unmatched_es1, unmatched_es2)
 viz_matched_unmatched(g1, g2, matched_es1, matched_es2, unmatched_es1, unmatched_es2)
-ged = nx.graph_edit_distance(g1,g2)
+# ged = nx.graph_edit_distance(g1,g2)
 print("Done")
+
+new_es1  = set()
+new_es2  = set()
+for i,es1 in enumerate(matched_es1_dict.keys()):
+    # new_es1.add(es1)
+    # new_es2.update(matched_es1_dict[es1])
+    viz_matched_unmatched(g1, g2, {es1}, matched_es1_dict[es1], set(), set())
+    if i % 10 == 0:
+        print(1)
