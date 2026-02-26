@@ -184,7 +184,7 @@ def get_all_node_coords(graph: nx.Graph) -> tuple[list, np.ndarray]:
     return node_ids, coords
 
 
-def get_edge_direction(G, edge):
+def get_edge_direction(G, edge):  # -> NDArray[Any] | NDArray[float64]:# -> NDArray[Any] | NDArray[float64]:
     """Get the 3D direction vector of an edge."""
     u, v = edge
     pos_u = np.array([G.nodes[u]["X"], G.nodes[u]["Y"], G.nodes[u]["Z"]])
@@ -196,7 +196,7 @@ def get_edge_direction(G, edge):
     return direction / norm
 
 
-def angular_similarity(G1, edge1, G2, edge2):# -> Any:
+def angular_similarity(G1, edge1, G2, edge2):  # -> Any:
     """
     Compute angular similarity between two edges.
     Returns angle in degrees (0 = parallel, 90 = perpendicular).
@@ -382,6 +382,24 @@ def path_length(path, subgraph):
     return total
 
 
+# def find_angular_path_in_subgraph(subgraph: nx.Graph, edge, source_graph: nx.Graph):
+#     target_angle = get_edge_direction(source_graph, edge)
+#     start_coord = get_node_coords(source_graph, edge[0])
+#     end_coord = get_node_coords(source_graph, edge[1])
+
+#     start_dists = []
+#     for i, node in enumerate(subgraph.nodes):
+#         coord = get_node_coords(subgraph, node)
+#         start_dists.append((i, np.linalg.norm(coord - start_coord)))
+
+#     start_idx = min(start_dists, key=lambda x: x[1])[0]
+
+#     start_node = subgraph.nodes[start_idx]
+
+#     for i, node in enumerate(subgraph.neighbors(start_node)):
+#         pass
+
+
 def find_longest_path_in_subgraph(subgraph: nx.Graph) -> list:
     """
     Find the longest path in a subgraph using DFS from endpoints.
@@ -430,6 +448,58 @@ def find_longest_path_in_subgraph(subgraph: nx.Graph) -> list:
                     stack.append((neighbor, path + [neighbor], visited | {neighbor}))
 
     return longest
+
+
+def find_length_matched_path_in_subgraph(subgraph: nx.Graph, start: int, end, source_len) -> list:
+    """
+    Find the path with the closest matching length in a subgraph using DFS from endpoints.
+
+    Parameters
+    ----------
+    subgraph : nx.Graph
+        Graph to find longest path in
+    start: int
+        Node at which to start
+    source_len: float
+        Target length of path
+    Returns
+    -------
+    list
+        List of node IDs forming the longest path
+    """
+    if len(subgraph.nodes) == 0:
+        return []
+
+    if len(subgraph.nodes) == 1:
+        return list(subgraph.nodes)
+
+    best_p = []
+    best_len = np.inf
+
+    
+    # First, try to see if there is a good match for target node. If yes, try to find a way there, if no or if fails then just try to match path length
+    end_node, end_dist = end
+    if end_dist < 5:
+        try:
+            best_p = nx.shortest_path(subgraph,source=start,target=end_node,weight="length") # Will return empty if start==end
+        except nx.exception.NetworkXNoPath as e:
+            pass
+    if len(best_p)<2:
+        # Find best path-length using DFS from each endpoint
+        stack = [(start, [start], {start})]
+        while stack:
+            node, path, visited = stack.pop()
+            neighbors = [n for n in subgraph.neighbors(node) if n not in visited]
+
+            plen = path_length(path, subgraph)
+            if abs(plen - source_len) < best_len:
+                best_p = path
+                best_len = abs(plen - source_len)
+
+            for neighbor in neighbors:
+                stack.append((neighbor, path + [neighbor], visited | {neighbor}))
+
+    return best_p
 
 
 def crop_path_to_endpoints(
@@ -516,8 +586,8 @@ def get_matched_edges_for_edge(
         Set of edge tuples from g2 that form the matched path
     """
     u, v = edge
-
-    # Get coordinates along the edge
+    start_coord = get_node_coords(g1, u)
+    end_coord = get_node_coords(g1, v)
     edge_coords = get_edge_points(g1, edge)
 
     # Find nearby nodes in g2
@@ -526,30 +596,39 @@ def get_matched_edges_for_edge(
     if len(candidate_nodes) < 2:
         return set()
 
-    # Build subgraph with only candidate nodes
     subgraph = build_candidate_subgraph(g2, candidate_nodes)
 
     if len(subgraph.edges) == 0:
         return set()
 
-    # Find longest path in subgraph
-    longest_path = find_longest_path_in_subgraph(subgraph)
+    # Find best matches for start and end node
+    start_dists = []
+    for i, node in enumerate(candidate_nodes):
+        coord = get_node_coords(g2, node)
+        start_dists.append((node, np.linalg.norm(coord - start_coord)))
+    start_match = min(start_dists, key=lambda x: x[1])
+    # Find the node closest to end_coord
+    end_dists = []
+    for i, node in enumerate(candidate_nodes):
+        coord = get_node_coords(g2, node)
+        end_dists.append((node, np.linalg.norm(coord - end_coord)))
+    end_match = min(end_dists, key=lambda x: x[1])
 
-    if len(longest_path) < 2:
+    if start_match[1] > end_match[1]:
+        best_path = find_length_matched_path_in_subgraph(subgraph, end_match[0], start_match, path_length(edge, g1))
+    else:
+        best_path = find_length_matched_path_in_subgraph(subgraph, start_match[0], end_match, path_length(edge, g1))
+
+    if len(best_path) < 2:
         return set()
 
-
-    # TODO: Maybe dont just get longest path but best angular matching path as well...
-    
     # Crop to match original edge endpoints
-    start_coord = get_node_coords(g1, u)
-    end_coord = get_node_coords(g1, v)
-    cropped_path = crop_path_to_endpoints(longest_path, g2, start_coord, end_coord)
+    cropped_path = crop_path_to_endpoints(best_path, g2, start_coord, end_coord)
 
     if len(cropped_path) < 2:
         return set()
 
-    if angular_similarity(g1, (u,v), g2, (cropped_path[0],cropped_path[1])) > 15:
+    if angular_similarity(g1, (u, v), g2, (cropped_path[0], cropped_path[-1])) > 30:
         return set()
 
     # Convert path to edges
@@ -577,6 +656,208 @@ def detect_split_edges(e1, similarites, g):
     lens = [sim["edge_lengths"][1] for sim in similarites.values()]
     if max(lens) > similarites[0]["edge_lengths"][0]:
         raise ValueError("Can only detect split vessels for elements smaller than the origin vessel.")
+
+
+def viz_matched_unmatched_interactive(
+    g1: nx.Graph,
+    g2: nx.Graph,
+    matched_edges_g1: set,
+    matched_edges_g2: set,
+    unmatched_edges_g1: set,
+    unmatched_edges_g2: set,
+    matched_es1_dict: dict = None,
+    matched_es2_dict: dict = None,
+    tube_radius: float = 0.8,
+):
+    """
+    Interactive version of viz_matched_unmatched.
+    Click on an edge to print its node IDs, category, and matching info to the console.
+    Left-click picks, drag to rotate still works.
+    """
+
+    def get_pos(graph):
+        return {
+            n: np.array([float(graph.nodes[n]["X"]), float(graph.nodes[n]["Y"]), float(graph.nodes[n]["Z"])])
+            for n in graph.nodes()
+        }
+
+    def collect_edge_geometry(graph, edges, pos):
+        points, lines = [], []
+        for edge in edges:
+            u, v = edge[0], edge[1]
+            if u not in pos or v not in pos:
+                continue
+            p1, p2 = pos[u], pos[v]
+            start_idx = len(points)
+            points.extend([p1, p2])
+            lines.extend([2, start_idx, start_idx + 1])
+        return points, lines
+
+    pos1 = get_pos(g1)
+    pos2 = get_pos(g2)
+
+    # Build lookup: sample start, mid, end of every edge for KDTree nearest-neighbour search
+    sample_points = []
+    sample_edge_info = []
+
+    edge_groups = [
+        (g1, matched_edges_g1, pos1, "g1", "G1 Matched"),
+        (g2, matched_edges_g2, pos2, "g2", "G2 Matched"),
+        (g1, unmatched_edges_g1, pos1, "g1", "G1 Unmatched"),
+        (g2, unmatched_edges_g2, pos2, "g2", "G2 Unmatched"),
+    ]
+
+    for graph, edges, pos, graph_key, category in edge_groups:
+        for edge in edges:
+            u, v = edge[0], edge[1]
+            if u not in pos or v not in pos:
+                continue
+            p1, p2 = pos[u], pos[v]
+            info = {"category": category, "graph_key": graph_key, "edge": (u, v), "graph": graph}
+            for pt in [p1, (p1 + p2) / 2, p2]:
+                sample_points.append(pt)
+                sample_edge_info.append(info)
+
+    if not sample_points:
+        print("No edges to display")
+        return
+
+    edge_tree = KDTree(np.array(sample_points))
+
+    # Build matching lookup from both dicts
+    match_info = {}
+    if matched_es1_dict:
+        for e1, e2_set in matched_es1_dict.items():
+            match_info[("g1", e1)] = ("matches in g2", e2_set)
+    if matched_es2_dict:
+        for e2, e1_set in matched_es2_dict.items():
+            match_info[("g2", e2)] = ("matches in g1", e1_set)
+
+    def _show_match_detail(source_graph, source_edge, source_key, target_graph, target_edges, target_key, pos_src, pos_tgt):
+        """Open a new plotter showing the source edge and its matched target edges."""
+        detail = pv.Plotter(title=f"Match detail: {source_key} edge {source_edge}")
+        detail.set_background("white")
+
+        # Source edge
+        su, sv = source_edge
+        pts_src = np.array([pos_src[su], pos_src[sv]])
+        mesh_src = pv.PolyData(pts_src)
+        mesh_src.lines = np.array([2, 0, 1])
+        detail.add_mesh(mesh_src.tube(radius=tube_radius), color="#E63946", label=f"{source_key} ({su},{sv})")
+
+        # Source node labels
+        for nid in (su, sv):
+            detail.add_point_labels(
+                pv.PolyData(pos_src[nid].reshape(1, -1)),
+                [str(nid)],
+                font_size=14,
+                point_size=8,
+                text_color="red",
+            )
+
+        # Target matched edges
+        for te in target_edges:
+            tu, tv = te
+            if tu not in pos_tgt or tv not in pos_tgt:
+                continue
+            pts_tgt = np.array([pos_tgt[tu], pos_tgt[tv]])
+            mesh_tgt = pv.PolyData(pts_tgt)
+            mesh_tgt.lines = np.array([2, 0, 1])
+            detail.add_mesh(mesh_tgt.tube(radius=tube_radius), color="#457B9D", label=f"{target_key} ({tu},{tv})")
+
+            for nid in (tu, tv):
+                detail.add_point_labels(
+                    pv.PolyData(pos_tgt[nid].reshape(1, -1)),
+                    [str(nid)],
+                    font_size=14,
+                    point_size=8,
+                    text_color="blue",
+                )
+
+        detail.add_legend()
+        detail.enable_anti_aliasing()
+        detail.show()
+
+    def on_pick(point):
+        if point is None:
+            return
+        picked = np.array(point)
+        dist, idx = edge_tree.query(picked)
+        info = sample_edge_info[idx]
+        u, v = info["edge"]
+        graph_key = info["graph_key"]
+        graph = info["graph"]
+        category = info["category"]
+
+        print(f"\n{'=' * 60}")
+        print(f"  Category:  {category}")
+        print(f"  Graph:     {graph_key}")
+        print(f"  Edge:      ({u}, {v})")
+        print(f"  Node {u}:   {get_node_coords(graph, u)}")
+        print(f"  Node {v}:   {get_node_coords(graph, v)}")
+        print(f"  Click dist: {dist:.2f}")
+
+        key = (graph_key, (u, v))
+        key_rev = (graph_key, (v, u))
+        matched_set = None
+        if key in match_info:
+            direction, matched_set = match_info[key]
+            print(f"  Match:     {direction} -> {matched_set}")
+        elif key_rev in match_info:
+            direction, matched_set = match_info[key_rev]
+            print(f"  Match:     {direction} -> {matched_set}")
+        else:
+            print(f"  Match:     (none)")
+        print(f"{'=' * 60}")
+
+        # Open detail window if there is a match
+        if matched_set:
+            if graph_key == "g1":
+                _show_match_detail(g1, (u, v), "g1", g2, matched_set, "g2", pos1, pos2)
+            else:
+                _show_match_detail(g2, (u, v), "g2", g1, matched_set, "g1", pos2, pos1)
+
+    # ---- render the same tubes as viz_matched_unmatched ----
+    matched_g1_pts, matched_g1_lines = collect_edge_geometry(g1, matched_edges_g1, pos1)
+    matched_g2_pts, matched_g2_lines = collect_edge_geometry(g2, matched_edges_g2, pos2)
+    unmatched_g1_pts, unmatched_g1_lines = collect_edge_geometry(g1, unmatched_edges_g1, pos1)
+    unmatched_g2_pts, unmatched_g2_lines = collect_edge_geometry(g2, unmatched_edges_g2, pos2)
+
+    colors = {
+        "matched_g1": "#2E8B57",
+        "matched_g2": "#4169E1",
+        "unmatched_g1": "#DC143C",
+        "unmatched_g2": "#FF8C00",
+    }
+
+    plotter = pv.Plotter()
+    plotter.set_background("white")
+
+    groups = [
+        (matched_g1_pts, matched_g1_lines, colors["matched_g1"], "G1 Matched"),
+        (matched_g2_pts, matched_g2_lines, colors["matched_g2"], "G2 Matched"),
+        (unmatched_g1_pts, unmatched_g1_lines, colors["unmatched_g1"], "G1 Unmatched"),
+        (unmatched_g2_pts, unmatched_g2_lines, colors["unmatched_g2"], "G2 Unmatched"),
+    ]
+
+    for points, lines, color, label in groups:
+        if points:
+            mesh = pv.PolyData(np.array(points))
+            mesh.lines = np.array(lines)
+            tubes = mesh.tube(radius=tube_radius)
+            plotter.add_mesh(tubes, color=color, label=label, pickable=True)
+
+    plotter.enable_point_picking(
+        callback=on_pick,
+        show_message="Left-click an edge to identify it",
+        show_point=True,
+        point_size=10,
+        color="yellow",
+        left_clicking=True,
+    )
+    plotter.add_legend()
+    plotter.enable_anti_aliasing()
+    plotter.show(auto_close=False, interactive_update=True)
 
 
 def create_unmatched_edges_graph(
@@ -652,7 +933,7 @@ graph_i9 = r"e:\sr_data\532\cuff_analysis\graph_comparison_cuff_base\i9\vesselvi
 g1 = load_graph(graph_gt)
 g2 = load_graph(graph_i9)
 
-distance = 15
+distance = 13  # 13.6
 matched_es1 = set()
 matched_es2 = set()
 matched_es1_dict = dict()
@@ -676,12 +957,12 @@ for e1 in matched_es1_dict:
         if e1 in e2_matches or (e1[1], e1[0]) in e2_matches:
             # If e1 is connecting multiple vessels then only throw it out if the other match is longer or connecting more vessels
             if len(matched_es1_dict[e1]) > 1:
-                if len(e2_matches) == len(matched_es1_dict[e1]): # If equal number of edges connected keep longer pair
+                if len(e2_matches) == len(matched_es1_dict[e1]):  # If equal number of edges connected keep longer pair
                     e1_len = np.sum([get_edge_length(g2, e[0], e[1]) for e in matched_es1_dict[e1]])
                     e2_len = np.sum([get_edge_length(g1, e[0], e[1]) for e in e2_matches])
                     if e1_len > e2_len:
                         continue
-                if len(e2_matches) <= len(matched_es1_dict[e1]): # Keep if longer
+                if len(e2_matches) <= len(matched_es1_dict[e1]):  # Keep if longer
                     continue
 
             to_delete_es1.add(e1)
@@ -701,15 +982,16 @@ for e1 in matched_es2_dict:
                     e2_len = np.sum([get_edge_length(g2, e[0], e[1]) for e in e2_matches])
                     if e1_len > e2_len:
                         continue
-                if len(e2_matches) <= len(matched_es2_dict[e1]): # Keep if longer
+                if len(e2_matches) <= len(matched_es2_dict[e1]):  # Keep if longer
                     continue
             to_delete_es2.add(e1)
             break
 for k in to_delete_es2:
     del matched_es2_dict[k]
 
+# TODO: Make a datastructure for all matches -> not just directional
 
-get_matched_edges_for_edge((23,79), g1, g2, max_distance=distance) # = {(30, 65)}
+get_matched_edges_for_edge((292, 307), g1, g2, max_distance=distance)  # = {(30, 65)}
 
 matched_es1 = set(list(matched_es1_dict.keys()))
 for ele in matched_es2_dict.values():
@@ -728,13 +1010,22 @@ for e2 in g2.edges:
     if e2 not in matched_es2 and (e2[1], e2[0]) not in matched_es2:
         unmatched_es2.add(e2)
 surplus_graph = create_unmatched_edges_graph(g1, g2, unmatched_es1, unmatched_es2)
-viz_matched_unmatched(g1, g2, matched_es1, matched_es2, unmatched_es1, unmatched_es2)
+viz_matched_unmatched_interactive(
+    g1,
+    g2,
+    matched_es1,
+    matched_es2,
+    unmatched_es1,
+    unmatched_es2,
+    matched_es1_dict=matched_es1_dict,
+    matched_es2_dict=matched_es2_dict,
+)
 # ged = nx.graph_edit_distance(g1,g2)
 print("Done")
-
-new_es1  = set()
-new_es2  = set()
-for i,es1 in enumerate(matched_es1_dict.keys()):
+#199->200
+new_es1 = set()
+new_es2 = set()
+for i, es1 in enumerate(matched_es1_dict.keys()):
     # new_es1.add(es1)
     # new_es2.update(matched_es1_dict[es1])
     viz_matched_unmatched(g1, g2, {es1}, matched_es1_dict[es1], set(), set())
