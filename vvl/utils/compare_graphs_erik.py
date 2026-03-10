@@ -476,15 +476,14 @@ def find_length_matched_path_in_subgraph(subgraph: nx.Graph, start: int, end, so
     best_p = []
     best_len = np.inf
 
-    
     # First, try to see if there is a good match for target node. If yes, try to find a way there, if no or if fails then just try to match path length
     end_node, end_dist = end
     if end_dist < 5:
         try:
-            best_p = nx.shortest_path(subgraph,source=start,target=end_node,weight="length") # Will return empty if start==end
+            best_p = nx.shortest_path(subgraph, source=start, target=end_node, weight="length")  # Will return empty if start==end
         except nx.exception.NetworkXNoPath as e:
             pass
-    if len(best_p)<2:
+    if len(best_p) < 2:
         # Find best path-length using DFS from each endpoint
         stack = [(start, [start], {start})]
         while stack:
@@ -586,10 +585,10 @@ def get_matched_edges_for_edge(
         Set of edge tuples from g2 that form the matched path
     """
     u, v = edge
+    source_len = get_edge_length(g1, u, v)
     start_coord = get_node_coords(g1, u)
     end_coord = get_node_coords(g1, v)
     edge_coords = get_edge_points(g1, edge)
-
     # Find nearby nodes in g2
     candidate_nodes = find_nearby_nodes(edge_coords, g2, max_distance)
 
@@ -615,9 +614,9 @@ def get_matched_edges_for_edge(
     end_match = min(end_dists, key=lambda x: x[1])
 
     if start_match[1] > end_match[1]:
-        best_path = find_length_matched_path_in_subgraph(subgraph, end_match[0], start_match, path_length(edge, g1))
+        best_path = find_length_matched_path_in_subgraph(subgraph, end_match[0], start_match, source_len)
     else:
-        best_path = find_length_matched_path_in_subgraph(subgraph, start_match[0], end_match, path_length(edge, g1))
+        best_path = find_length_matched_path_in_subgraph(subgraph, start_match[0], end_match, source_len)
 
     if len(best_path) < 2:
         return set()
@@ -627,7 +626,7 @@ def get_matched_edges_for_edge(
 
     if len(cropped_path) < 2:
         return set()
-
+    # TODO: Fréchet distance
     if angular_similarity(g1, (u, v), g2, (cropped_path[0], cropped_path[-1])) > 30:
         return set()
 
@@ -860,6 +859,481 @@ def viz_matched_unmatched_interactive(
     plotter.show(auto_close=False, interactive_update=True)
 
 
+def viz_final_matches(
+    g1: nx.Graph,
+    g2: nx.Graph,
+    final_matches: list,
+    tube_radius: float = 0.8,
+):
+    """
+    Visualize the result of final_matches consolidation.
+
+    Colors
+    ------
+    Sea green   : matched g1 edges
+    Royal blue  : matched g2 edges
+    Crimson     : unmatched g1 edges
+    Dark orange : unmatched g2 edges
+
+    Left-click an edge to print its info and open a detail window showing its match pair.
+
+    Parameters
+    ----------
+    g1 : nx.Graph
+        First graph (e.g. ground truth).
+    g2 : nx.Graph
+        Second graph (e.g. reconstruction).
+    final_matches : list of (g1_edges_set, g2_edges_set)
+        Each element is a pair of sets: the g1 edges and the corresponding g2 edges.
+    tube_radius : float
+        Radius of tube visualization.
+    """
+    matched_edges_g1 = set()
+    matched_edges_g2 = set()
+    g1_to_g2 = {}  # g1_edge -> set of g2 edges
+    g2_to_g1 = {}  # g2_edge -> set of g1 edges
+
+    for g1_edges, g2_edges in final_matches:
+        matched_edges_g1.update(g1_edges)
+        matched_edges_g2.update(g2_edges)
+        for e1 in g1_edges:
+            g1_to_g2[e1] = set(g2_edges)
+        for e2 in g2_edges:
+            g2_to_g1[e2] = set(g1_edges)
+
+    def is_matched(edge, matched_set):
+        return edge in matched_set or (edge[1], edge[0]) in matched_set
+
+    unmatched_edges_g1 = {e for e in g1.edges() if not is_matched(e, matched_edges_g1)}
+    unmatched_edges_g2 = {e for e in g2.edges() if not is_matched(e, matched_edges_g2)}
+
+    viz_matched_unmatched_interactive(
+        g1,
+        g2,
+        {},#matched_edges_g1,
+        {},#matched_edges_g2,
+        unmatched_edges_g1,
+        unmatched_edges_g2,
+        matched_es1_dict=g1_to_g2,
+        matched_es2_dict=g2_to_g1,
+        tube_radius=tube_radius,
+    )
+
+
+def print_match_summary(g1: nx.Graph, g2: nx.Graph, final_matches: list):
+    """
+    Print per-match and aggregate errors for length, volume, and radius_avg.
+
+    For each match (g1_edges, g2_edges) the g1 and g2 sides are each
+    aggregated as:
+      - length      : sum of edge lengths
+      - volume      : sum of edge volumes
+      - radius_avg  : length-weighted mean radius
+
+    Errors are g2 - g1 (absolute) and (g2 - g1) / g1 * 100 (relative %).
+    Aggregate statistics (mean, median, std) are printed at the end.
+    """
+
+    def _agg(graph, edges):
+        lengths = []
+        volumes = []
+        radii = []
+        for e in edges:
+            u, v = e
+            if not graph.has_edge(u, v):
+                u, v = v, u
+            d = graph.edges[u, v]
+            lengths.append(float(d.get("length", 0.0)))
+            volumes.append(float(d.get("volume", 0.0)))
+            radii.append(float(d.get("radius_avg", 0.0)))
+        total_len = sum(lengths)
+        total_vol = sum(volumes)
+        w_radius = (
+            sum(r * l for r, l in zip(radii, lengths)) / total_len
+            if total_len > 0
+            else 0.0
+        )
+        return total_len, total_vol, w_radius
+
+    rows = []
+    for i, (g1_edges, g2_edges) in enumerate(final_matches):
+        l1, v1, r1 = _agg(g1, g1_edges)
+        l2, v2, r2 = _agg(g2, g2_edges)
+        rows.append(
+            {
+                "i": i,
+                "n_g1": len(g1_edges),
+                "n_g2": len(g2_edges),
+                "len_g1": l1,
+                "len_g2": l2,
+                "len_abs": l2 - l1,
+                "len_rel": (l2 - l1) / l1 * 100 if l1 > 0 else float("nan"),
+                "vol_g1": v1,
+                "vol_g2": v2,
+                "vol_abs": v2 - v1,
+                "vol_rel": (v2 - v1) / v1 * 100 if v1 > 0 else float("nan"),
+                "rad_g1": r1,
+                "rad_g2": r2,
+                "rad_abs": r2 - r1,
+                "rad_rel": (r2 - r1) / r1 * 100 if r1 > 0 else float("nan"),
+            }
+        )
+
+    if not rows:
+        print("No matches to summarize.")
+        return
+
+    # ---- per-match table ----
+    rows.sort(key=lambda r: r["len_g1"])
+    header = f"{'#':>5}  {'g1e':>4}{'g2e':>4}  {'len_g1':>8}{'len_g2':>8}{'len_err':>9}{'len_%':>7}  {'vol_g1':>10}{'vol_g2':>10}{'vol_err':>11}{'vol_%':>7}  {'rad_g1':>7}{'rad_g2':>7}{'rad_err':>8}{'rad_%':>7}"
+    print(header)
+    print("-" * len(header))
+    for r in rows:
+        print(
+            f"{r['i']:>5}  {r['n_g1']:>4}{r['n_g2']:>4}"
+            f"  {r['len_g1']:>8.1f}{r['len_g2']:>8.1f}{r['len_abs']:>+9.1f}{r['len_rel']:>+7.1f}"
+            f"  {r['vol_g1']:>10.1f}{r['vol_g2']:>10.1f}{r['vol_abs']:>+11.1f}{r['vol_rel']:>+7.1f}"
+            f"  {r['rad_g1']:>7.2f}{r['rad_g2']:>7.2f}{r['rad_abs']:>+8.3f}{r['rad_rel']:>+7.1f}"
+        )
+
+    # ---- aggregate stats ----
+    def _stats(key):
+        vals = np.array([r[key] for r in rows])
+        finite = vals[np.isfinite(vals)]
+        if len(finite) == 0:
+            return dict(mean=float("nan"), median=float("nan"), std=float("nan"))
+        return dict(mean=np.mean(finite).item(), median=np.median(finite).item(), std=np.std(finite).item())
+
+    print()
+    print(f"{'':20} {'mean':>10} {'median':>10} {'std':>10}")
+    print("-" * 52)
+    for label, key in [
+        ("length abs err",   "len_abs"),
+        ("length rel err %", "len_rel"),
+        ("volume abs err",   "vol_abs"),
+        ("volume rel err %", "vol_rel"),
+        ("radius abs err",   "rad_abs"),
+        ("radius rel err %", "rad_rel"),
+    ]:
+        s = _stats(key)
+        print(f"{label:20} {s['mean']:>+10.3f} {s['median']:>+10.3f} {s['std']:>10.3f}")
+    print(f"\nTotal matches: {len(rows)}")
+
+    # ---- unmatched edge stats ----
+    matched_edges_g1 = set()
+    matched_edges_g2 = set()
+    for g1_edges, g2_edges in final_matches:
+        matched_edges_g1.update(g1_edges)
+        matched_edges_g2.update(g2_edges)
+
+    def is_matched(edge, matched_set):
+        return edge in matched_set or (edge[1], edge[0]) in matched_set
+
+    unmatched_g1 = [e for e in g1.edges() if not is_matched(e, matched_edges_g1)]
+    unmatched_g2 = [e for e in g2.edges() if not is_matched(e, matched_edges_g2)]
+
+    def _edge_arrays(graph, edges):
+        lengths, volumes, radii = [], [], []
+        for u, v in edges:
+            if not graph.has_edge(u, v):
+                u, v = v, u
+            d = graph.edges[u, v]
+            lengths.append(float(d.get("length", 0.0)))
+            volumes.append(float(d.get("volume", 0.0)))
+            radii.append(float(d.get("radius_avg", 0.0)))
+        return np.array(lengths), np.array(volumes), np.array(radii)
+
+    def _print_unmatched_stats(label, graph, edges):
+        if not edges:
+            print(f"\n{label}: 0 unmatched edges")
+            return
+        lens, vols, rads = _edge_arrays(graph, edges)
+        print(f"\n{label}: {len(edges)} unmatched edges")
+        print(f"  {'':16} {'mean':>10} {'median':>10} {'std':>10} {'total':>12}")
+        print(f"  {'-'*60}")
+        for name, arr in [("length", lens), ("volume", vols), ("radius_avg", rads)]:
+            total = f"{arr.sum():>12.1f}" if name != "radius_avg" else f"{'—':>12}"
+            print(f"  {name:16} {arr.mean():>10.3f} {np.median(arr):>10.3f} {arr.std():>10.3f} {total}")
+
+    _print_unmatched_stats("G1 unmatched", g1, unmatched_g1)
+    _print_unmatched_stats("G2 unmatched", g2, unmatched_g2)
+
+
+def run_matching(g1: nx.Graph, g2: nx.Graph, distance: float = 13.0) -> list:
+    """
+    Run the full bidirectional matching pipeline between g1 and g2.
+
+    Returns
+    -------
+    list of (g1_edges_set, g2_edges_set) tuples
+    """
+    matched_es1_dict = {}
+    matched_es2_dict = {}
+
+    for e1 in tqdm(g1.edges, desc="Matching g1→g2"):
+        matched = get_matched_edges_for_edge(e1, g1, g2, max_distance=distance)
+        if matched:
+            matched_es1_dict[e1] = matched
+
+    for e2 in tqdm(g2.edges, desc="Matching g2→g1"):
+        matched = get_matched_edges_for_edge(e2, g2, g1, max_distance=distance)
+        if matched:
+            matched_es2_dict[e2] = matched
+
+    """
+    TODO: 
+    ** Final Matchings **
+    The way our vessel matching algorithm works means that all matches from e1 of g1 can only be similarly long as e1. And vice-versa for all e2 of g2. 
+    This means that we can't just take one graph_matches but we need a smart way to combine them.
+
+    The problem is that match-finding is directional. Meaning a match will only ever be as long as the source_edge.
+    How do we identify good edges:
+        Accept all matchings from g1
+        Examine all edges of g2 with multi-edge matching in g1: (1:1 matchings can be ignored since they will have been considered by the other match as well)
+            - Multi-edge matching likely means good match (NOTE: Can we ensure that this is a good match)
+            - Now identify if any g1-> g2 matchings can be removed:
+                - if source_edge of g2_multi_match is found as match from g1
+                    -> if this is a 1:1 matching: Compute Frechet distance and delete the bad and keep the good (If not rejected in any of the occurences of above)
+                    -> If not then:
+                        check if g1_source_edge is included in original g2_matching
+                        -> This means that g2_source is part of g1_match AND g1_source is part of g2_match 
+                            -> remove both and create new final_matching from these two matchings
+                        -> If not included in original g2_matching, keep both since it is probably a unique matching.
+                - for individual edges along the path of the multi-edge matching from source_e_g2:
+                    -> Remove any instances of 1:1 matchings -> Since they will be shorter and thus more likely to be wrong
+                    -> Other instances of multi-path matchings -> Don't do anything since it is probably a unique matching
+
+        Examine all edges that are present in multiple matchings
+            - If there are multiple 1:1 matchings keep only the one with the best Frechet distance
+
+    """
+    final_matches = []
+    for e1_key, e1_match in matched_es1_dict.items():
+        final_matches.append(({e1_key}, e1_match))
+    for e2_key, e2_match in matched_es2_dict.items():
+        if len(e2_match) < 2:
+            continue
+        final_matches.append((e2_match, {e2_key}))
+
+    return final_matches
+
+
+def get_match_stats(g1: nx.Graph, g2: nx.Graph, final_matches: list) -> dict:
+    """
+    Compute summary statistics for a set of final_matches.
+
+    Returns a flat dict with keys covering:
+      - matching overview (counts, unmatched totals)
+      - per-feature error stats (mean/median abs and rel for length, volume, radius_avg)
+    """
+
+    def _agg(graph, edges):
+        lengths, volumes, radii = [], [], []
+        for e in edges:
+            u, v = e
+            if not graph.has_edge(u, v):
+                u, v = v, u
+            d = graph.edges[u, v]
+            lengths.append(float(d.get("length", 0.0)))
+            volumes.append(float(d.get("volume", 0.0)))
+            radii.append(float(d.get("radius_avg", 0.0)))
+        total_len = sum(lengths)
+        total_vol = sum(volumes)
+        w_radius = (
+            sum(r * l for r, l in zip(radii, lengths)) / total_len
+            if total_len > 0
+            else 0.0
+        )
+        return total_len, total_vol, w_radius
+
+    # Per-match errors
+    len_abs, len_rel, vol_abs, vol_rel, rad_abs, rad_rel = [], [], [], [], [], []
+    matched_g1, matched_g2 = set(), set()
+
+    for g1_edges, g2_edges in final_matches:
+        matched_g1.update(g1_edges)
+        matched_g2.update(g2_edges)
+        l1, v1, r1 = _agg(g1, g1_edges)
+        l2, v2, r2 = _agg(g2, g2_edges)
+        len_abs.append(l2 - l1)
+        len_rel.append((l2 - l1) / l1 * 100 if l1 > 0 else float("nan"))
+        vol_abs.append(v2 - v1)
+        vol_rel.append((v2 - v1) / v1 * 100 if v1 > 0 else float("nan"))
+        rad_abs.append(r2 - r1)
+        rad_rel.append((r2 - r1) / r1 * 100 if r1 > 0 else float("nan"))
+
+    def _s(arr, fn):
+        a = np.array(arr)
+        a = a[np.isfinite(a)]
+        return fn(a).item() if len(a) > 0 else float("nan")
+
+    def is_matched(edge, matched_set):
+        return edge in matched_set or (edge[1], edge[0]) in matched_set
+
+    unmatched_g1 = [e for e in g1.edges() if not is_matched(e, matched_g1)]
+    unmatched_g2 = [e for e in g2.edges() if not is_matched(e, matched_g2)]
+
+    def _totals(graph, edges):
+        total_len = sum(float(graph.edges[u if graph.has_edge(u, v) else v, v if graph.has_edge(u, v) else u].get("length", 0.0)) for u, v in edges)
+        mean_len = np.mean([float(graph.edges[u if graph.has_edge(u, v) else v, v if graph.has_edge(u, v) else u].get("length", 0.0)) for u, v in edges])
+        std_len = np.std([float(graph.edges[u if graph.has_edge(u, v) else v, v if graph.has_edge(u, v) else u].get("length", 0.0)) for u, v in edges])
+        total_vol = sum(float(graph.edges[u if graph.has_edge(u, v) else v, v if graph.has_edge(u, v) else u].get("volume", 0.0)) for u, v in edges)
+        mean_vol = np.mean([float(graph.edges[u if graph.has_edge(u, v) else v, v if graph.has_edge(u, v) else u].get("volume", 0.0)) for u, v in edges])
+        std_vol = np.std([float(graph.edges[u if graph.has_edge(u, v) else v, v if graph.has_edge(u, v) else u].get("volume", 0.0)) for u, v in edges])
+
+        return total_len, mean_len, std_len, total_vol, mean_vol, std_vol
+
+
+    unm_total_len_g1, unm_mean_len_g1, unm_std_len_g1, unm_total_vol_g1, unm_mean_vol_g1, unm_std_vol_g1 = _totals(g1, unmatched_g1)
+    unm_total_len_g2, unm_mean_len_g2, unm_std_len_g2, unm_total_vol_g2, unm_mean_vol_g2, unm_std_vol_g2 = _totals(g2, unmatched_g2)
+
+    return {
+        "n_matches":          len(final_matches),
+        "n_matched_g1":       len(matched_g1),
+        "n_matched_g2":       len(matched_g2),
+        "n_unmatched_g1":     len(unmatched_g1),
+        "n_unmatched_g2":     len(unmatched_g2),
+        "unm_len_total_g1":         unm_total_len_g1,
+        "unm_len_total_g2":         unm_total_len_g2,
+        "unm_len_mean_g1":         unm_mean_len_g1,
+        "unm_len_mean_g2":         unm_mean_len_g2,
+        "unm_len_std_g1":         unm_std_len_g1,
+        "unm_len_std_g2":         unm_std_len_g2,
+        "unm_vol_total_g1":         unm_total_vol_g1,
+        "unm_vol_total_g2":         unm_total_vol_g2,
+        "unm_vol_mean_g1":         unm_mean_vol_g1,
+        "unm_vol_mean_g2":         unm_mean_vol_g2,
+        "unm_vol_std_g1":         unm_std_vol_g1,
+        "unm_vol_std_g2":         unm_std_vol_g2,
+        "mean_len_abs":       _s(len_abs, np.mean),
+        "median_len_abs":     _s(len_abs, np.median),
+        "mean_len_rel":       _s(len_rel, np.mean),
+        "median_len_rel":     _s(len_rel, np.median),
+        "mean_vol_abs":       _s(vol_abs, np.mean),
+        "median_vol_abs":     _s(vol_abs, np.median),
+        "mean_vol_rel":       _s(vol_rel, np.mean),
+        "median_vol_rel":     _s(vol_rel, np.median),
+        "mean_rad_abs":       _s(rad_abs, np.mean),
+        "median_rad_abs":     _s(rad_abs, np.median),
+        "mean_rad_rel":       _s(rad_rel, np.mean),
+        "median_rad_rel":     _s(rad_rel, np.median),
+    }
+
+
+def compare_representations(
+    g_gt: nx.Graph,
+    comparison_graphs: dict,
+    distance: float = 13.0,
+):
+    """
+    Compare g_gt against multiple reconstructions and print a side-by-side summary table.
+
+    Parameters
+    ----------
+    g_gt : nx.Graph
+        Ground-truth graph.
+    comparison_graphs : dict
+        Ordered mapping of label -> nx.Graph, e.g. {"i9": g_i9, "i16": g_i16, "i25": g_i25}.
+    distance : float
+        Max matching distance (voxels).
+    """
+    labels = list(comparison_graphs.keys())
+    all_stats = {}
+    all_matches = {}
+
+    for label, g2 in comparison_graphs.items():
+        print(f"\n{'='*60}")
+        print(f"  Matching GT vs {label}")
+        print(f"{'='*60}")
+        fm = run_matching(g_gt, g2, distance=distance)
+        all_matches[label] = (g2, fm)
+        all_stats[label] = get_match_stats(g_gt, g2, fm)
+
+    # ---- side-by-side table ----
+    col_w = 14
+    label_w = 32
+
+    def _header():
+        row = f"{'':>{label_w}}"
+        for lbl in labels:
+            row += f"{'gt vs ' + lbl:>{col_w}}"
+        return row
+
+    def _row(name, key, fmt="{:>+.1f}", integer=False):
+        row = f"{name:<{label_w}}"
+        for lbl in labels:
+            val = all_stats[lbl][key]
+            if integer:
+                row += f"{int(val):>{col_w}}"
+            elif np.isfinite(val):
+                row += f"{fmt.format(val):>{col_w}}"
+            else:
+                row += f"{'nan':>{col_w}}"
+        return row
+
+    sep = "-" * (label_w + col_w * len(labels))
+
+    print(f"\n{'GT vs reconstruction comparison':^{label_w + col_w * len(labels)}}")
+    print("=" * (label_w + col_w * len(labels)))
+    print(_header())
+    print(sep)
+
+    print(f"\n{'--- Matching overview':}")
+    print(_row("Matched pairs",          "n_matches",      integer=True))
+    print(_row("Matched G1 edges",       "n_matched_g1",   integer=True))
+    print(_row("Matched G2 edges",       "n_matched_g2",   integer=True))
+    print(_row("Unmatched G1 edges",     "n_unmatched_g1", integer=True))
+    print(_row("Unmatched G2 edges",     "n_unmatched_g2", integer=True))
+    print(_row("Unmatched G1 total length",    "unm_len_total_g1",     fmt="{:.1f}"))
+    print(_row("Unmatched G2 total length",    "unm_len_total_g2",     fmt="{:.1f}"))
+    print(_row("Unmatched G1 mean length",    "unm_len_mean_g1",     fmt="{:.1f}"))
+    print(_row("Unmatched G2 mean length",    "unm_len_mean_g2",     fmt="{:.1f}"))
+    print(_row("Unmatched G1 std length",    "unm_len_std_g1",     fmt="{:.1f}"))
+    print(_row("Unmatched G2 std length",    "unm_len_std_g2",     fmt="{:.1f}"))
+    print(_row("Unmatched G1 total volume",    "unm_vol_total_g1",     fmt="{:.7f}"))
+    print(_row("Unmatched G2 total volume",    "unm_vol_total_g2",     fmt="{:.7f}"))
+    print(_row("Unmatched G1 mean volume",    "unm_vol_mean_g1",     fmt="{:.7f}"))
+    print(_row("Unmatched G2 mean volume",    "unm_vol_mean_g2",     fmt="{:.7f}"))
+    print(_row("Unmatched G1 std volume",    "unm_vol_std_g1",     fmt="{:.7f}"))
+    print(_row("Unmatched G2 std volume",    "unm_vol_std_g2",     fmt="{:.7f}"))
+
+    print(f"\n{'--- Length error (vx)':}")
+    print(_row("  Mean abs",    "mean_len_abs",   fmt="{:>+.2f}"))
+    print(_row("  Median abs",  "median_len_abs", fmt="{:>+.2f}"))
+    print(_row("  Mean rel %",  "mean_len_rel",   fmt="{:>+.1f}"))
+    print(_row("  Median rel %","median_len_rel", fmt="{:>+.1f}"))
+
+    print(f"\n{'--- Volume error':}")
+    print(_row("  Mean abs",    "mean_vol_abs",   fmt="{:>+.2f}"))
+    print(_row("  Median abs",  "median_vol_abs", fmt="{:>+.2f}"))
+    print(_row("  Mean rel %",  "mean_vol_rel",   fmt="{:>+.1f}"))
+    print(_row("  Median rel %","median_vol_rel", fmt="{:>+.1f}"))
+
+    print(f"\n{'--- Radius error (vx)':}")
+    print(_row("  Mean abs",    "mean_rad_abs",   fmt="{:>+.3f}"))
+    print(_row("  Median abs",  "median_rad_abs", fmt="{:>+.3f}"))
+    print(_row("  Mean rel %",  "mean_rad_rel",   fmt="{:>+.1f}"))
+    print(_row("  Median rel %","median_rad_rel", fmt="{:>+.1f}"))
+
+    print()
+    return all_stats, all_matches
+
+
+def get_node_dists_from_edge(e1, g1, g2, edge_match):
+    start_node = e1[0]
+    start_coord = get_node_coords(g1, start_node)
+    end_node = e1[1]
+    end_coord = get_node_coords(g1, end_node)
+    start_dists = []
+    end_dists = []
+
+    for node in {num for sublist in edge_match for num in sublist}:
+        coord = get_node_coords(g2, node)
+        start_dists.append(np.linalg.norm(coord - start_coord))
+        end_dists.append(np.linalg.norm(coord - end_coord))
+    return min(start_dists) + min(end_dists)
+
+
 def create_unmatched_edges_graph(
     graph1: nx.Graph,
     graph2: nx.Graph,
@@ -930,104 +1404,20 @@ graph_i16 = r"e:\sr_data\532\cuff_analysis\graph_comparison_cuff_base\i16\vessel
 graph_i9 = r"e:\sr_data\532\cuff_analysis\graph_comparison_cuff_base\i9\vesselvio\R_20190216163532_AngelosHyperamia_base_1_RSOM50_wl1_corr_v_rgb_pred.pkl"
 
 
-g1 = load_graph(graph_gt)
-g2 = load_graph(graph_i9)
+g_gt = load_graph(graph_gt)
+comparison_graphs = {
+    "i9":  load_graph(graph_i9),
+    "i16": load_graph(graph_i16),
+    "i25": load_graph(graph_i25),
+}
 
-distance = 13  # 13.6
-matched_es1 = set()
-matched_es2 = set()
-matched_es1_dict = dict()
-matched_es2_dict = dict()
+distance = 13
 
-# Find edges in g2 that match edges in g1
-for e1 in tqdm(g1.edges, desc="Matching g1 edges to g2"):
-    matched = get_matched_edges_for_edge(e1, g1, g2, max_distance=distance)
-    if matched:
-        matched_es1_dict[e1] = matched
+all_stats, all_matches = compare_representations(g_gt, comparison_graphs, distance=distance)
 
-# Find edges in g1 that match edges in g2
-for e2 in tqdm(g2.edges, desc="Matching g2 edges to g1"):
-    matched = get_matched_edges_for_edge(e2, g2, g1, max_distance=distance)
-    if matched:
-        matched_es2_dict[e2] = matched
-
-to_delete_es1 = set()
-for e1 in matched_es1_dict:
-    for e2_matches in matched_es2_dict.values():
-        if e1 in e2_matches or (e1[1], e1[0]) in e2_matches:
-            # If e1 is connecting multiple vessels then only throw it out if the other match is longer or connecting more vessels
-            if len(matched_es1_dict[e1]) > 1:
-                if len(e2_matches) == len(matched_es1_dict[e1]):  # If equal number of edges connected keep longer pair
-                    e1_len = np.sum([get_edge_length(g2, e[0], e[1]) for e in matched_es1_dict[e1]])
-                    e2_len = np.sum([get_edge_length(g1, e[0], e[1]) for e in e2_matches])
-                    if e1_len > e2_len:
-                        continue
-                if len(e2_matches) <= len(matched_es1_dict[e1]):  # Keep if longer
-                    continue
-
-            to_delete_es1.add(e1)
-            break
-for k in to_delete_es1:
-    del matched_es1_dict[k]
-
-
-to_delete_es2 = set()
-for e1 in matched_es2_dict:
-    for e2_matches in matched_es1_dict.values():
-        if e1 in e2_matches or (e1[1], e1[0]) in e2_matches:
-            # If e1 is connecting multiple vessels then only throw it out if the other match is longer
-            if len(matched_es2_dict[e1]) > 1:
-                if len(e2_matches) == len(matched_es2_dict[e1]):
-                    e1_len = np.sum([get_edge_length(g1, e[0], e[1]) for e in matched_es2_dict[e1]])
-                    e2_len = np.sum([get_edge_length(g2, e[0], e[1]) for e in e2_matches])
-                    if e1_len > e2_len:
-                        continue
-                if len(e2_matches) <= len(matched_es2_dict[e1]):  # Keep if longer
-                    continue
-            to_delete_es2.add(e1)
-            break
-for k in to_delete_es2:
-    del matched_es2_dict[k]
-
-# TODO: Make a datastructure for all matches -> not just directional
-
-get_matched_edges_for_edge((292, 307), g1, g2, max_distance=distance)  # = {(30, 65)}
-
-matched_es1 = set(list(matched_es1_dict.keys()))
-for ele in matched_es2_dict.values():
-    matched_es1.update(ele)
-matched_es2 = set(list(matched_es2_dict.keys()))
-for ele in matched_es1_dict.values():
-    matched_es2.update(ele)
-
-# Compute unmatched edges (edges that weren't matched by the other graph)
-unmatched_es1 = set()
-unmatched_es2 = set()
-for e1 in g1.edges:
-    if e1 not in matched_es1 and (e1[1], e1[0]) not in matched_es1:
-        unmatched_es1.add(e1)
-for e2 in g2.edges:
-    if e2 not in matched_es2 and (e2[1], e2[0]) not in matched_es2:
-        unmatched_es2.add(e2)
-surplus_graph = create_unmatched_edges_graph(g1, g2, unmatched_es1, unmatched_es2)
-viz_matched_unmatched_interactive(
-    g1,
-    g2,
-    matched_es1,
-    matched_es2,
-    unmatched_es1,
-    unmatched_es2,
-    matched_es1_dict=matched_es1_dict,
-    matched_es2_dict=matched_es2_dict,
-)
-# ged = nx.graph_edit_distance(g1,g2)
-print("Done")
-#199->200
-new_es1 = set()
-new_es2 = set()
-for i, es1 in enumerate(matched_es1_dict.keys()):
-    # new_es1.add(es1)
-    # new_es2.update(matched_es1_dict[es1])
-    viz_matched_unmatched(g1, g2, {es1}, matched_es1_dict[es1], set(), set())
-    if i % 10 == 0:
-        print(1)
+# Visualize a specific comparison interactively (change label as needed)
+viz_label = "i9"
+g2_viz, fm_viz = all_matches[viz_label]
+print_match_summary(g_gt, g2_viz, fm_viz)
+viz_final_matches(g_gt, g2_viz, fm_viz)
+print(1)
