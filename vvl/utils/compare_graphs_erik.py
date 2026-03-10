@@ -1087,27 +1087,126 @@ def viz_final_matches(
         tube_radius=tube_radius,
     )
 
-graph_gt = r"E:\sr_data\532\cuff_analysis\graph_comparison_cuff_base\original\vesselvio\Graphs\R_20190216163532_AngelosHyperamia_base_1_RSOM50_wl1_corr_v_rgb_pred.pkl"
-graph_i25 = r"E:\sr_data\532\cuff_analysis\graph_comparison_cuff_base\i25\vesselvio\Graphs\R_20190216163532_AngelosHyperamia_base_1_RSOM50_wl1_corr_v_rgb_pred.pkl"
-graph_i16 = r"e:\sr_data\532\cuff_analysis\graph_comparison_cuff_base\i16\vesselvio\R_20190216163532_AngelosHyperamia_base_1_RSOM50_wl1_corr_v_rgb_pred.pkl"
-graph_i9 = r"e:\sr_data\532\cuff_analysis\graph_comparison_cuff_base\i9\vesselvio\R_20190216163532_AngelosHyperamia_base_1_RSOM50_wl1_corr_v_rgb_pred.pkl"
+from pathlib import Path
 
+BASE = Path(r"E:\sr_data\532\cuff_analysis\graph_comparison_cuff_base")
 
-g_gt = load_graph(graph_gt)
-comparison_graphs = {
-    "i9":  load_graph(graph_i9),
-    "i16": load_graph(graph_i16),
-    "i25": load_graph(graph_i25),
+TIER_SUBPATHS = {
+    "original": "original/vesselvio/Graphs",
+    "i9":       "i9/vesselvio",
+    "i16":      "i16/vesselvio",
+    "i25":      "i25/vesselvio/Graphs",
 }
 
+sample_names = sorted(p.name for p in (BASE / TIER_SUBPATHS["original"]).glob("*.pkl"))
+print(f"Found {len(sample_names)} samples: {sample_names}")
+
+LABELS = ["i9", "i16", "i25"]
 distance = 13
 filter_length = 0.250
 
-all_stats, all_matches = compare_representations(g_gt, comparison_graphs, distance=distance, filter_length=filter_length)
+# ---------------------------------------------------------------------------
+# Run comparison for each sample
+# ---------------------------------------------------------------------------
 
-# Visualize a specific comparison interactively (change label as needed)
-viz_label = "i9"
-g2_viz, fm_viz = all_matches[viz_label]
-print_match_summary(g_gt, g2_viz, fm_viz, filter_length=filter_length)
-viz_final_matches(g_gt, g2_viz, fm_viz)
-print(1)
+all_sample_stats = []  # list of {label -> stats_dict}
+
+for sample_name in sample_names:
+    print(f"\n{'#' * 70}")
+    print(f"  SAMPLE: {sample_name}")
+    print(f"{'#' * 70}")
+
+    g_gt = load_graph(str(BASE / TIER_SUBPATHS["original"] / sample_name))
+    comparison_graphs = {
+        lbl: load_graph(str(BASE / TIER_SUBPATHS[lbl] / sample_name))
+        for lbl in LABELS
+    }
+
+    sample_stats, _ = compare_representations(
+        g_gt, comparison_graphs, distance=distance, filter_length=filter_length
+    )
+    all_sample_stats.append(sample_stats)
+
+# ---------------------------------------------------------------------------
+# Aggregate statistics across all samples
+# ---------------------------------------------------------------------------
+
+stat_keys = list(all_sample_stats[0][LABELS[0]].keys())
+
+avg_stats = {}
+for lbl in LABELS:
+    avg_stats[lbl] = {}
+    for key in stat_keys:
+        vals = [s[lbl][key] for s in all_sample_stats if np.isfinite(s[lbl][key])]
+        avg_stats[lbl][key] = float(np.mean(vals)) if vals else float("nan")
+
+# ---------------------------------------------------------------------------
+# Print averaged summary table
+# ---------------------------------------------------------------------------
+
+col_w = 14
+label_w = 32
+
+def _avg_header():
+    row = f"{'':>{label_w}}"
+    for lbl in LABELS:
+        row += f"{'gt vs ' + lbl:>{col_w}}"
+    return row
+
+def _avg_row(name, key, fmt="{:>+.1f}", integer=False):
+    row = f"{name:<{label_w}}"
+    for lbl in LABELS:
+        val = avg_stats[lbl][key]
+        if not np.isfinite(val):
+            row += f"{'nan':>{col_w}}"
+        elif integer:
+            row += f"{val:>{col_w}.1f}"
+        else:
+            row += f"{fmt.format(val):>{col_w}}"
+    return row
+
+sep = "-" * (label_w + col_w * len(LABELS))
+
+print(f"\n{'=' * (label_w + col_w * len(LABELS))}")
+print(f"  AVERAGE ACROSS {len(sample_names)} SAMPLES".center(label_w + col_w * len(LABELS)))
+print(f"{'=' * (label_w + col_w * len(LABELS))}")
+print(_avg_header())
+print(sep)
+
+print("\n--- Matching overview (avg)")
+print(_avg_row("Matched pairs",              "n_matches",        integer=True))
+print(_avg_row("Matched G1 edges",           "n_matched_g1",     integer=True))
+print(_avg_row("Matched G2 edges",           "n_matched_g2",     integer=True))
+print(_avg_row("Unmatched G1 edges",         "n_unmatched_g1",   integer=True))
+print(_avg_row("Unmatched G2 edges",         "n_unmatched_g2",   integer=True))
+print(_avg_row("Unmatched G1 total length",  "unm_len_total_g1", fmt="{:.1f}"))
+print(_avg_row("Unmatched G2 total length",  "unm_len_total_g2", fmt="{:.1f}"))
+print(_avg_row("Unmatched G1 mean length",   "unm_len_mean_g1",  fmt="{:.1f}"))
+print(_avg_row("Unmatched G2 mean length",   "unm_len_mean_g2",  fmt="{:.1f}"))
+print(_avg_row("Unmatched G1 std length",    "unm_len_std_g1",   fmt="{:.1f}"))
+print(_avg_row("Unmatched G2 std length",    "unm_len_std_g2",   fmt="{:.1f}"))
+print(_avg_row("Unmatched G1 total volume",  "unm_vol_total_g1", fmt="{:.7f}"))
+print(_avg_row("Unmatched G2 total volume",  "unm_vol_total_g2", fmt="{:.7f}"))
+print(_avg_row("Unmatched G1 mean volume",   "unm_vol_mean_g1",  fmt="{:.7f}"))
+print(_avg_row("Unmatched G2 mean volume",   "unm_vol_mean_g2",  fmt="{:.7f}"))
+print(_avg_row("Unmatched G1 std volume",    "unm_vol_std_g1",   fmt="{:.7f}"))
+print(_avg_row("Unmatched G2 std volume",    "unm_vol_std_g2",   fmt="{:.7f}"))
+
+print("\n--- Length error (vx) (avg)")
+print(_avg_row("  Mean abs",     "mean_len_abs",   fmt="{:>+.2f}"))
+print(_avg_row("  Median abs",   "median_len_abs", fmt="{:>+.2f}"))
+print(_avg_row("  Mean rel %",   "mean_len_rel",   fmt="{:>+.1f}"))
+print(_avg_row("  Median rel %", "median_len_rel", fmt="{:>+.1f}"))
+
+print("\n--- Volume error (avg)")
+print(_avg_row("  Mean abs",     "mean_vol_abs",   fmt="{:>+.2f}"))
+print(_avg_row("  Median abs",   "median_vol_abs", fmt="{:>+.2f}"))
+print(_avg_row("  Mean rel %",   "mean_vol_rel",   fmt="{:>+.1f}"))
+print(_avg_row("  Median rel %", "median_vol_rel", fmt="{:>+.1f}"))
+
+print("\n--- Radius error (vx) (avg)")
+print(_avg_row("  Mean abs",     "mean_rad_abs",   fmt="{:>+.3f}"))
+print(_avg_row("  Median abs",   "median_rad_abs", fmt="{:>+.3f}"))
+print(_avg_row("  Mean rel %",   "mean_rad_rel",   fmt="{:>+.1f}"))
+print(_avg_row("  Median rel %", "median_rad_rel", fmt="{:>+.1f}"))
+print()
