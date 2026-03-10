@@ -920,7 +920,7 @@ def viz_final_matches(
     )
 
 
-def print_match_summary(g1: nx.Graph, g2: nx.Graph, final_matches: list):
+def print_match_summary(g1: nx.Graph, g2: nx.Graph, final_matches: list, filter_length: float = 0.0):
     """
     Print per-match and aggregate errors for length, volume, and radius_avg.
 
@@ -958,6 +958,8 @@ def print_match_summary(g1: nx.Graph, g2: nx.Graph, final_matches: list):
     rows = []
     for i, (g1_edges, g2_edges) in enumerate(final_matches):
         l1, v1, r1 = _agg(g1, g1_edges)
+        if l1 < filter_length:
+            continue
         l2, v2, r2 = _agg(g2, g2_edges)
         rows.append(
             {
@@ -1029,8 +1031,14 @@ def print_match_summary(g1: nx.Graph, g2: nx.Graph, final_matches: list):
     def is_matched(edge, matched_set):
         return edge in matched_set or (edge[1], edge[0]) in matched_set
 
-    unmatched_g1 = [e for e in g1.edges() if not is_matched(e, matched_edges_g1)]
-    unmatched_g2 = [e for e in g2.edges() if not is_matched(e, matched_edges_g2)]
+    def _edge_len(graph, edge):
+        u, v = edge
+        if not graph.has_edge(u, v):
+            u, v = v, u
+        return float(graph.edges[u, v].get("length", 0.0))
+
+    unmatched_g1 = [e for e in g1.edges() if not is_matched(e, matched_edges_g1) and _edge_len(g1, e) >= filter_length]
+    unmatched_g2 = [e for e in g2.edges() if not is_matched(e, matched_edges_g2) and _edge_len(g2, e) >= filter_length]
 
     def _edge_arrays(graph, edges):
         lengths, volumes, radii = [], [], []
@@ -1118,7 +1126,7 @@ def run_matching(g1: nx.Graph, g2: nx.Graph, distance: float = 13.0) -> list:
     return final_matches
 
 
-def get_match_stats(g1: nx.Graph, g2: nx.Graph, final_matches: list) -> dict:
+def get_match_stats(g1: nx.Graph, g2: nx.Graph, final_matches: list, filter_length: float = 0.0) -> dict:
     """
     Compute summary statistics for a set of final_matches.
 
@@ -1154,6 +1162,8 @@ def get_match_stats(g1: nx.Graph, g2: nx.Graph, final_matches: list) -> dict:
         matched_g1.update(g1_edges)
         matched_g2.update(g2_edges)
         l1, v1, r1 = _agg(g1, g1_edges)
+        if l1 < filter_length:
+            continue
         l2, v2, r2 = _agg(g2, g2_edges)
         len_abs.append(l2 - l1)
         len_rel.append((l2 - l1) / l1 * 100 if l1 > 0 else float("nan"))
@@ -1170,8 +1180,14 @@ def get_match_stats(g1: nx.Graph, g2: nx.Graph, final_matches: list) -> dict:
     def is_matched(edge, matched_set):
         return edge in matched_set or (edge[1], edge[0]) in matched_set
 
-    unmatched_g1 = [e for e in g1.edges() if not is_matched(e, matched_g1)]
-    unmatched_g2 = [e for e in g2.edges() if not is_matched(e, matched_g2)]
+    def _edge_len(graph, edge):
+        u, v = edge
+        if not graph.has_edge(u, v):
+            u, v = v, u
+        return float(graph.edges[u, v].get("length", 0.0))
+
+    unmatched_g1 = [e for e in g1.edges() if not is_matched(e, matched_g1) and _edge_len(g1, e) >= filter_length]
+    unmatched_g2 = [e for e in g2.edges() if not is_matched(e, matched_g2) and _edge_len(g2, e) >= filter_length]
 
     def _totals(graph, edges):
         total_len = sum(float(graph.edges[u if graph.has_edge(u, v) else v, v if graph.has_edge(u, v) else u].get("length", 0.0)) for u, v in edges)
@@ -1224,6 +1240,7 @@ def compare_representations(
     g_gt: nx.Graph,
     comparison_graphs: dict,
     distance: float = 13.0,
+    filter_length: float = 0.0,
 ):
     """
     Compare g_gt against multiple reconstructions and print a side-by-side summary table.
@@ -1247,7 +1264,7 @@ def compare_representations(
         print(f"{'='*60}")
         fm = run_matching(g_gt, g2, distance=distance)
         all_matches[label] = (g2, fm)
-        all_stats[label] = get_match_stats(g_gt, g2, fm)
+        all_stats[label] = get_match_stats(g_gt, g2, fm, filter_length=filter_length)
 
     # ---- side-by-side table ----
     col_w = 14
@@ -1412,12 +1429,13 @@ comparison_graphs = {
 }
 
 distance = 13
+filter_length = 0.250
 
-all_stats, all_matches = compare_representations(g_gt, comparison_graphs, distance=distance)
+all_stats, all_matches = compare_representations(g_gt, comparison_graphs, distance=distance, filter_length=filter_length)
 
 # Visualize a specific comparison interactively (change label as needed)
 viz_label = "i9"
 g2_viz, fm_viz = all_matches[viz_label]
-print_match_summary(g_gt, g2_viz, fm_viz)
+print_match_summary(g_gt, g2_viz, fm_viz, filter_length=filter_length)
 viz_final_matches(g_gt, g2_viz, fm_viz)
 print(1)
