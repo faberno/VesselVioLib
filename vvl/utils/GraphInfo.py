@@ -16,7 +16,7 @@ from vvl.utils.volume_processing import (
 )
 from vvl.analysis import reconstruct_volume
 import nibabel as nib
-
+import gc
 
 class GraphInfo:
     def __init__(
@@ -33,6 +33,7 @@ class GraphInfo:
         normalize: bool = True,
     ):
         self.volume_path = vesselseg_path
+        self.layerseg_path = layerseg_path
         self.structure_mask = structure_mask
         self.recon = None
         self.name = os.path.basename(vesselseg_path).replace(".nii.gz", "")
@@ -58,18 +59,26 @@ class GraphInfo:
         self.i_graph = None
         self.features = {"name": self.name}
         self.large_vessel_radius = None
-        if layerseg_path:
-            self.layerseg_vol, _ = load_volume(layerseg_path)
-            self.layerseg_vol = self.layerseg_vol.swapaxes(
-                0, 2
-            )  ##TODO shape verifizieren
+        self.layerseg_vol = None
+
+        self.depth_map = None
+        self.upper_lower_depth = depth
+
+    def init_layseg_info(self):
+        if self.layerseg_path:
+            self.layerseg_vol, _ = load_volume(self.layerseg_path)
+            # self.layerseg_vol = self.layerseg_vol.swapaxes(
+            #     0, 2
+            # )  ##TODO shape verifizieren
             assert self.layerseg_vol.shape[0] < self.layerseg_vol.shape[2], (
                 "Layer segmentation is wider than it is deep. Probably wrong axes used"
             )
-        else:
-            self.layerseg_vol = None
-        self.layer_depth_map = self.compute_layer_depth_map() if layerseg_path else None
-        self.upper_lower_depth = depth
+            self.depth_map = self.compute_layer_depth_map()   
+            if self.upper_lower_depth is None:
+                self.compute_vp_depth()
+            self.layerseg_vol = None # Free up layer seg as it is no longer needed
+            gc.collect()
+
 
     def extract_graph(self):
         graph, graph_nx, filtered_vol = extract_graph_from_volume(
@@ -83,6 +92,9 @@ class GraphInfo:
         self.i_graph = graph
         # TODO: In order to keep accurate TBV calculation, filtered vol should be depth cropped to final signal, this should also ignore floating vessels in background
         self.filtered_vol = filtered_vol
+        self.unfiltered_vol = None # Free up RAM since we dont need it anymore
+        gc.collect()
+        self.init_layseg_info()
 
     def extract_radius(self):
         if self.nx_graph is None:
@@ -104,7 +116,7 @@ class GraphInfo:
             )
         depth_map = lay.shape[2] - depth_map
         depth_map -= np.min(depth_map)
-        self.depth_map = depth_map
+        return depth_map
 
     def vessel_depth_is_lower(self, x, y, z):
         x, y, z = int(round(x)) - 1, int(round(y)) - 1, int(round(z)) - 1
@@ -129,8 +141,7 @@ class GraphInfo:
         return mask
 
     def compute_vp_depth(self):
-        layseg = self.layerseg_vol.copy()
-        layseg = np.array(layseg, dtype=np.float32)
+        layseg = np.array(self.layerseg_vol, dtype=np.float32)
         layseg = layseg.transpose(1, 0, 2)
         G = self.nx_graph
         nodes = []
@@ -312,8 +323,6 @@ class GraphInfo:
     def extract_features_upper_lower(self):
         print(self.name)
         assert len(self.features) == 1
-        if self.upper_lower_depth is None:
-            self.compute_vp_depth()
         self.features.update({"upper_lower_depth": self.upper_lower_depth})
 
         self.prune_graph_upper_lower()
@@ -336,14 +345,6 @@ class GraphInfo:
             normalization=self.normalize,
         )
 
-        # features_int = extract_int_features(
-        #     volume_lay=self.layerseg_vol,
-        #     volume_upper=self.filtered_vol_upper,
-        #     volume_lower=self.filtered_vol_lower,
-        #     recon=self.recon,
-        #     upper_lower_depth=self.upper_lower_depth,
-        # )
-
         # append _lower and _upper suffix to corresponding dict keys
         features_upper = {
             key + "_upper": value for key, value in features_upper.items()
@@ -354,3 +355,7 @@ class GraphInfo:
         self.features.update(features_upper)
         self.features.update(features_lower)
         # self.features.update(features_int)
+        self.filtered_vol_upper = None
+        self.filtered_vol_lower = None
+        self.filtered_vol = None
+        gc.collect() # Free up vesselsegs from RAM after calculations have been performed

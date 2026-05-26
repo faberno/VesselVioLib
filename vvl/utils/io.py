@@ -1,5 +1,6 @@
 import os
 import pickle
+import gc
 import numpy as np
 import networkx as nx
 
@@ -49,7 +50,8 @@ def save_graph(
     print("Vertices:", g.vcount(), "Edges:", g.ecount())
     try:
         if g.vcount() > 0:
-            g.write_graphml(file)
+            with open(file, "wb") as f:
+                g.write_graphml(f)
         else:
             print("Empty graph, skipped:", file)
     except Exception as e:
@@ -57,4 +59,6 @@ def save_graph(
     # except:
     #     g_ = g.to_networkx()
     #     nx.write_graphml(g_, file)
+    finally:
+        gc.collect()
     return
