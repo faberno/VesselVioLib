@@ -460,6 +460,42 @@ def vessel_tortuosity_features(G: nx.Graph, large_vessel_radius: float):
     }
 
 
+def _greedy_trace_vessel(G, u, v):
+    """Trace a vessel greedily from seed edge (u, v), following highest-radius neighbors.
+
+    Returns
+    -------
+    vessel_edges : set of frozenset
+        The set of edge keys belonging to this vessel.
+    edge_data : list of (radius_avg, length)
+        Per-edge radius and length for the traced vessel.
+    """
+    seed_data = G.edges[u, v, 0] if isinstance(G, nx.MultiGraph) else G.edges[u, v]
+    vessel_edges = {frozenset({u, v})}
+    edge_data = [(seed_data["radius_avg"], seed_data["length"])]
+
+    def _trace(start):
+        current = start
+        while True:
+            candidates = [
+                (neighbor, data)
+                for _, neighbor, data in G.edges(current, data=True)
+                if frozenset({current, neighbor}) not in vessel_edges
+            ]
+            if not candidates:
+                break
+            best_neighbor, best_data = max(
+                candidates, key=lambda x: x[1]["radius_avg"]
+            )
+            vessel_edges.add(frozenset({current, best_neighbor}))
+            edge_data.append((best_data["radius_avg"], best_data["length"]))
+            current = best_neighbor
+
+    _trace(u)
+    _trace(v)
+    return vessel_edges, edge_data
+
+
 def vessel_count_features(G: nx.Graph, large_vessel_radius: float):
     """Counts vessels by greedily tracing paths from the thickest edges.
 
@@ -495,44 +531,20 @@ def vessel_count_features(G: nx.Graph, large_vessel_radius: float):
     small_vessel_count = 0
 
     while H.number_of_edges() > 0:
-        # Find edge with maximum radius — seed of the next vessel
         max_edge = max(H.edges(data=True), key=lambda e: e[2]["radius_avg"])
         u, v = max_edge[0], max_edge[1]
-        seed_radius = max_edge[2]["radius_avg"]
-        edge_data = [(max_edge[2]["radius_avg"],max_edge[2]["length"])]
-        # Track edges belonging to this vessel
-        vessel_edges = {frozenset({u, v})}
 
-        # Greedily trace from a node, collecting highest-radius edges
-        def trace(start):
-            current = start
-            while True:
-                candidates = []
-                for _, neighbor, data in H.edges(current, data=True):
-                    if frozenset({current, neighbor}) not in vessel_edges:
-                        candidates.append((neighbor, data))
-                if not candidates:
-                    break
-                best_neighbor, neighbor_dat = max(
-                    candidates, key=lambda x: x[1]["radius_avg"]
-                )
-                vessel_edges.add(frozenset({current, best_neighbor}))
-                edge_data.append((neighbor_dat["radius_avg"],neighbor_dat["length"]))
-                current = best_neighbor
-
-        trace(u)
-        trace(v)
+        vessel_edges, edge_data = _greedy_trace_vessel(H, u, v)
 
         total_len = sum(e[1] for e in edge_data)
-        mean_radius = sum(e[0]*(e[1]/total_len) for e in edge_data)
-        # Classify vessel by seed radius
+        mean_radius = sum(e[0] * (e[1] / total_len) for e in edge_data)
+
         if mean_radius >= large_vessel_radius:
             large_vessel_count += 1
         else:
             small_vessel_count += 1
         vessel_count += 1
 
-        # Remove traced edges from graph
         for edge in vessel_edges:
             e = tuple(edge)
             if H.has_edge(*e):
@@ -542,6 +554,91 @@ def vessel_count_features(G: nx.Graph, large_vessel_radius: float):
         "vessel_count": vessel_count,
         "large_vessel_count": large_vessel_count,
         "small_vessel_count": small_vessel_count,
+    }
+
+
+def vascular_area_fraction(volume:np.ndarray , resolution):
+    """Fraction of the XY imaging area covered by vessel projections.
+
+    Parameters
+    ----------
+    volume: np.ndarray
+        Segmentation volume
+    resolution : array-like
+        Voxel spacing (Z, Y, X) in physical units.
+
+    Returns
+    -------
+    dict
+        vascular_area_fraction: Ratio of vessel-covered area to total XY area.
+    """
+    top_mip = np.max(volume,axis=2)
+
+    total_xy_area = (top_mip.shape[0] * resolution[0]) * (top_mip.shape[1] * resolution[1])
+
+    vessel_area = np.sum(top_mip) * (resolution[0]*resolution[1])
+    return {"vascular_area_fraction": min(vessel_area / total_xy_area, 1.0)}
+
+
+def terminal_vessel_density(G: nx.Graph, total_volume: float):
+    """Number of vessel endpoints (leaf nodes) normalized by volume.
+
+    Leaf nodes (degree 1) represent vessel tips — a high density
+    indicates fine branching reaching into tissue.
+
+    Parameters
+    ----------
+    G : nx.Graph
+        NetworkX graph of the vessel network.
+    total_volume : float
+        Total imaging volume in physical units.
+
+    Returns
+    -------
+    dict
+        terminal_vessel_density: Number of endpoints per unit volume.
+    """
+    n_terminals = sum(1 for _, degree in G.degree() if degree == 1)
+    return {"terminal_vessel_density": n_terminals / total_volume}
+
+
+def dominant_vessel_features(G: nx.Graph):
+    """Radius and length of the dominant (thickest) vessel.
+
+    Traces the dominant vessel using the same greedy algorithm as
+    vessel_count_features: starting from the thickest edge, following
+    the highest-radius neighbor from each endpoint until a leaf.
+
+    Parameters
+    ----------
+    G : nx.Graph
+        NetworkX graph of the vessel network.
+
+    Returns
+    -------
+    dict
+        dominant_vessel_radius: Length-weighted average radius of the
+            dominant vessel path.
+        dominant_vessel_length: Total physical length of the dominant
+            vessel path.
+    """
+    if G.number_of_edges() == 0:
+        return {
+            "dominant_vessel_radius": 0.0,
+            "dominant_vessel_length": 0.0,
+        }
+
+    max_edge = max(G.edges(data=True), key=lambda e: e[2]["radius_avg"])
+    u, v = max_edge[0], max_edge[1]
+
+    _, edge_data = _greedy_trace_vessel(G, u, v)
+
+    total_len = sum(e[1] for e in edge_data)
+    weighted_radius = sum(e[0] * (e[1] / total_len) for e in edge_data)
+
+    return {
+        "dominant_vessel_radius": weighted_radius,
+        "dominant_vessel_length": total_len,
     }
 
 
