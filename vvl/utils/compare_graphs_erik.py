@@ -161,12 +161,14 @@ def _aggregate_edge_features(graph: nx.Graph, edges) -> tuple[float, float, floa
     return total_len, total_vol, w_radius
 
 
-def _collect_edge_geometry(graph, edges, pos):
+def _collect_edge_geometry(graph, edges, pos, filter_length: float = 0.0):
     """Collect line-segment points and VTK-style line indices for a set of edges."""
     points, lines = [], []
     for edge in edges:
         u, v = edge[0], edge[1]
         if u not in pos or v not in pos:
+            continue
+        if filter_length > 0.0 and get_edge_length(graph, u, v) < filter_length:
             continue
         p1, p2 = pos[u], pos[v]
         start_idx = len(points)
@@ -436,12 +438,25 @@ def run_matching(g1: nx.Graph, g2: nx.Graph, distance: float = 13.0) -> list:
 
     # Combine: all g1->g2 matches, plus multi-edge g2->g1 matches
     final_matches = []
+    all_matches_g1 = set()
+    all_matches_g2 = set()
     for e1_key, e1_match in matched_es1_dict.items():
         final_matches.append(({e1_key}, e1_match))
+        all_matches_g1.add(e1_key)
+        for tmp in e1_match:
+            all_matches_g2.add(tmp)
     for e2_key, e2_match in matched_es2_dict.items():
         if len(e2_match) >= 2:
             final_matches.append((e2_match, {e2_key}))
+            all_matches_g2.add(e2_key)
+            for tmp in e2_match:
+                all_matches_g1.add(tmp)
 
+        else: # Also include if length is one and both edges have not been covered yet
+            e2_match_tmp = list(e2_match)[0]
+            if e2_key not in all_matches_g2 and (e2_key[1],e2_key[0]) not in all_matches_g2:
+                if e2_match_tmp not in final_matches and (e2_match_tmp[1],e2_match_tmp[0]) not in all_matches_g1:
+                    final_matches.append((e2_match, {e2_key}))
     return final_matches
 
 
@@ -528,6 +543,9 @@ def print_match_summary(g1: nx.Graph, g2: nx.Graph, final_matches: list, filter_
     matched_edges_g1 = set()
     matched_edges_g2 = set()
     for g1_edges, g2_edges in final_matches:
+        l1, _, _ = _aggregate_edge_features(g1, g1_edges)
+        if l1 < filter_length:
+            continue
         matched_edges_g1.update(g1_edges)
         matched_edges_g2.update(g2_edges)
 
@@ -577,13 +595,15 @@ def get_match_stats(g1: nx.Graph, g2: nx.Graph, final_matches: list, filter_leng
     vol_abs, vol_rel = [], []
     rad_abs, rad_rel = [], []
     matched_g1, matched_g2 = set(), set()
+    n_filtered_matches = 0
 
     for g1_edges, g2_edges in final_matches:
-        matched_g1.update(g1_edges)
-        matched_g2.update(g2_edges)
         l1, v1, r1 = _aggregate_edge_features(g1, g1_edges)
         if l1 < filter_length:
             continue
+        matched_g1.update(g1_edges)
+        matched_g2.update(g2_edges)
+        n_filtered_matches += 1
         l2, v2, r2 = _aggregate_edge_features(g2, g2_edges)
         len_abs.append(l2 - l1)
         len_rel.append((l2 - l1) / l1 * 100 if l1 > 0 else float("nan"))
@@ -622,7 +642,7 @@ def get_match_stats(g1: nx.Graph, g2: nx.Graph, final_matches: list, filter_leng
     unm_len_total_g2, unm_len_mean_g2, unm_len_std_g2, unm_vol_total_g2, unm_vol_mean_g2, unm_vol_std_g2 = _unmatched_totals(g2, unmatched_g2)
 
     return {
-        "n_matches":          len(final_matches),
+        "n_matches":          n_filtered_matches,
         "n_matched_g1":       len(matched_g1),
         "n_matched_g2":       len(matched_g2),
         "n_unmatched_g1":     len(unmatched_g1),
@@ -747,8 +767,8 @@ def compare_representations(
     print(_row("  Median rel %", "median_vol_rel", fmt="{:>+.1f}"))
 
     print("\n--- Radius error (vx)")
-    print(_row("  Mean abs",     "mean_rad_abs",   fmt="{:>+.3f}"))
-    print(_row("  Median abs",   "median_rad_abs", fmt="{:>+.3f}"))
+    print(_row("  Mean abs",     "mean_rad_abs",   fmt="{:>+.9f}"))
+    print(_row("  Median abs",   "median_rad_abs", fmt="{:>+.9f}"))
     print(_row("  Mean rel %",   "mean_rad_rel",   fmt="{:>+.1f}"))
     print(_row("  Median rel %", "median_rad_rel", fmt="{:>+.1f}"))
 
@@ -822,7 +842,7 @@ COLORS = {
 }
 
 
-def viz_graph(G):
+def viz_graph(G, filter_length: float = 0.0):
     """Render a graph with edges colored by their 'source' attribute."""
     pos = _get_pos(G)
 
@@ -830,6 +850,8 @@ def viz_graph(G):
     g2_points, g2_lines = [], []
 
     for u, v in G.edges():
+        if filter_length > 0.0 and get_edge_length(G, u, v) < filter_length:
+            continue
         p1, p2 = pos[u], pos[v]
         source = G.edges[u, v].get("source", "g1")
 
@@ -868,6 +890,7 @@ def viz_matched_unmatched(
     unmatched_edges_g1: set,
     unmatched_edges_g2: set,
     tube_radius: float = 0.8,
+    filter_length: float = 0.0,
 ):
     """Visualize matched and unmatched edges from two graphs with distinct colors."""
     pos1 = _get_pos(g1)
@@ -884,7 +907,7 @@ def viz_matched_unmatched(
     plotter.set_background("white")
 
     for graph, edges, pos, color, label in groups:
-        points, lines = _collect_edge_geometry(graph, edges, pos)
+        points, lines = _collect_edge_geometry(graph, edges, pos, filter_length)
         _add_edge_tubes(plotter, points, lines, color, label, tube_radius)
 
     plotter.add_legend()
@@ -902,6 +925,7 @@ def viz_matched_unmatched_interactive(
     matched_es1_dict: dict = None,
     matched_es2_dict: dict = None,
     tube_radius: float = 0.8,
+    filter_length: float = 0.0,
 ):
     """
     Interactive version of viz_matched_unmatched.
@@ -925,6 +949,8 @@ def viz_matched_unmatched_interactive(
         for edge in edges:
             u, v = edge[0], edge[1]
             if u not in pos or v not in pos:
+                continue
+            if filter_length > 0.0 and get_edge_length(graph, u, v) < filter_length:
                 continue
             p1, p2 = pos[u], pos[v]
             info = {"category": category, "graph_key": graph_key, "edge": (u, v), "graph": graph}
@@ -1035,7 +1061,7 @@ def viz_matched_unmatched_interactive(
     ]
 
     for graph, edges, pos, color, label in render_groups:
-        points, lines = _collect_edge_geometry(graph, edges, pos)
+        points, lines = _collect_edge_geometry(graph, edges, pos, filter_length)
         _add_edge_tubes(plotter, points, lines, color, label, tube_radius)
 
     plotter.enable_point_picking(
@@ -1087,6 +1113,7 @@ def viz_final_matches(
         tube_radius=tube_radius,
     )
 
+import pandas as pd
 from pathlib import Path
 
 BASE = Path(r"E:\sr_data\532\cuff_analysis\graph_comparison_cuff_base")
@@ -1109,7 +1136,9 @@ filter_length = 0.250
 # Run comparison for each sample
 # ---------------------------------------------------------------------------
 
-all_sample_stats = []  # list of {label -> stats_dict}
+# Collect rows: each row is one (sample, label) combination
+records = []
+sample_data = {}  # sample_name -> {"g_gt": g_gt, "matches": {label: (g2, fm)}}
 
 for sample_name in sample_names:
     print(f"\n{'#' * 70}")
@@ -1122,91 +1151,109 @@ for sample_name in sample_names:
         for lbl in LABELS
     }
 
-    sample_stats, _ = compare_representations(
+    sample_stats, all_matches = compare_representations(
         g_gt, comparison_graphs, distance=distance, filter_length=filter_length
     )
-    all_sample_stats.append(sample_stats)
+
+    sample_data[sample_name] = {
+        "g_gt": g_gt,
+        "matches": {lbl: (g2, fm) for lbl, (g2, fm) in all_matches.items()},
+    }
+
+    for lbl, stats in sample_stats.items():
+        records.append({"sample": sample_name, "label": lbl, **stats})
 
 # ---------------------------------------------------------------------------
-# Aggregate statistics across all samples
+# Build DataFrame and compute averages
 # ---------------------------------------------------------------------------
 
-stat_keys = list(all_sample_stats[0][LABELS[0]].keys())
+df = pd.DataFrame(records).set_index(["sample", "label"])
 
-avg_stats = {}
-for lbl in LABELS:
-    avg_stats[lbl] = {}
-    for key in stat_keys:
-        vals = [s[lbl][key] for s in all_sample_stats if np.isfinite(s[lbl][key])]
-        avg_stats[lbl][key] = float(np.mean(vals)) if vals else float("nan")
+# Average across samples for each label
+avg_df = df.groupby("label").mean()
+
+# Reorder rows to match LABELS order
+avg_df = avg_df.reindex(LABELS)
+
+# Rename columns to "gt vs <label>" for display
+avg_df.index = ["gt vs " + lbl for lbl in avg_df.index]
 
 # ---------------------------------------------------------------------------
-# Print averaged summary table
+# Print averaged summary tables
 # ---------------------------------------------------------------------------
 
-col_w = 14
-label_w = 32
+pd.set_option("display.float_format", "{:+.9f}".format)
+pd.set_option("display.max_columns", None)
+pd.set_option("display.width", 120)
 
-def _avg_header():
-    row = f"{'':>{label_w}}"
-    for lbl in LABELS:
-        row += f"{'gt vs ' + lbl:>{col_w}}"
-    return row
+print(f"\n{'=' * 80}")
+print(f"  AVERAGE ACROSS {len(sample_names)} SAMPLES".center(80))
+print(f"{'=' * 80}")
 
-def _avg_row(name, key, fmt="{:>+.1f}", integer=False):
-    row = f"{name:<{label_w}}"
-    for lbl in LABELS:
-        val = avg_stats[lbl][key]
-        if not np.isfinite(val):
-            row += f"{'nan':>{col_w}}"
-        elif integer:
-            row += f"{val:>{col_w}.1f}"
-        else:
-            row += f"{fmt.format(val):>{col_w}}"
-    return row
+SECTION_KEYS = {
+    "Matching overview": [
+        "n_matches", "n_matched_g1", "n_matched_g2",
+        "n_unmatched_g1", "n_unmatched_g2",
+        "unm_len_total_g1", "unm_len_total_g2",
+        "unm_len_mean_g1",  "unm_len_mean_g2",
+        "unm_len_std_g1",   "unm_len_std_g2",
+        "unm_vol_total_g1", "unm_vol_total_g2",
+        "unm_vol_mean_g1",  "unm_vol_mean_g2",
+        "unm_vol_std_g1",   "unm_vol_std_g2",
+    ],
+    "Length error (vx)": [
+        "mean_len_abs", "median_len_abs", "mean_len_rel", "median_len_rel",
+    ],
+    "Volume error": [
+        "mean_vol_abs", "median_vol_abs", "mean_vol_rel", "median_vol_rel",
+    ],
+    "Radius error (vx)": [
+        "mean_rad_abs", "median_rad_abs", "mean_rad_rel", "median_rad_rel",
+    ],
+}
 
-sep = "-" * (label_w + col_w * len(LABELS))
+for section, keys in SECTION_KEYS.items():
+    print(f"\n--- {section}")
+    print(avg_df[keys].T.to_string())
 
-print(f"\n{'=' * (label_w + col_w * len(LABELS))}")
-print(f"  AVERAGE ACROSS {len(sample_names)} SAMPLES".center(label_w + col_w * len(LABELS)))
-print(f"{'=' * (label_w + col_w * len(LABELS))}")
-print(_avg_header())
-print(sep)
-
-print("\n--- Matching overview (avg)")
-print(_avg_row("Matched pairs",              "n_matches",        integer=True))
-print(_avg_row("Matched G1 edges",           "n_matched_g1",     integer=True))
-print(_avg_row("Matched G2 edges",           "n_matched_g2",     integer=True))
-print(_avg_row("Unmatched G1 edges",         "n_unmatched_g1",   integer=True))
-print(_avg_row("Unmatched G2 edges",         "n_unmatched_g2",   integer=True))
-print(_avg_row("Unmatched G1 total length",  "unm_len_total_g1", fmt="{:.1f}"))
-print(_avg_row("Unmatched G2 total length",  "unm_len_total_g2", fmt="{:.1f}"))
-print(_avg_row("Unmatched G1 mean length",   "unm_len_mean_g1",  fmt="{:.1f}"))
-print(_avg_row("Unmatched G2 mean length",   "unm_len_mean_g2",  fmt="{:.1f}"))
-print(_avg_row("Unmatched G1 std length",    "unm_len_std_g1",   fmt="{:.1f}"))
-print(_avg_row("Unmatched G2 std length",    "unm_len_std_g2",   fmt="{:.1f}"))
-print(_avg_row("Unmatched G1 total volume",  "unm_vol_total_g1", fmt="{:.7f}"))
-print(_avg_row("Unmatched G2 total volume",  "unm_vol_total_g2", fmt="{:.7f}"))
-print(_avg_row("Unmatched G1 mean volume",   "unm_vol_mean_g1",  fmt="{:.7f}"))
-print(_avg_row("Unmatched G2 mean volume",   "unm_vol_mean_g2",  fmt="{:.7f}"))
-print(_avg_row("Unmatched G1 std volume",    "unm_vol_std_g1",   fmt="{:.7f}"))
-print(_avg_row("Unmatched G2 std volume",    "unm_vol_std_g2",   fmt="{:.7f}"))
-
-print("\n--- Length error (vx) (avg)")
-print(_avg_row("  Mean abs",     "mean_len_abs",   fmt="{:>+.2f}"))
-print(_avg_row("  Median abs",   "median_len_abs", fmt="{:>+.2f}"))
-print(_avg_row("  Mean rel %",   "mean_len_rel",   fmt="{:>+.1f}"))
-print(_avg_row("  Median rel %", "median_len_rel", fmt="{:>+.1f}"))
-
-print("\n--- Volume error (avg)")
-print(_avg_row("  Mean abs",     "mean_vol_abs",   fmt="{:>+.2f}"))
-print(_avg_row("  Median abs",   "median_vol_abs", fmt="{:>+.2f}"))
-print(_avg_row("  Mean rel %",   "mean_vol_rel",   fmt="{:>+.1f}"))
-print(_avg_row("  Median rel %", "median_vol_rel", fmt="{:>+.1f}"))
-
-print("\n--- Radius error (vx) (avg)")
-print(_avg_row("  Mean abs",     "mean_rad_abs",   fmt="{:>+.3f}"))
-print(_avg_row("  Median abs",   "median_rad_abs", fmt="{:>+.3f}"))
-print(_avg_row("  Mean rel %",   "mean_rad_rel",   fmt="{:>+.1f}"))
-print(_avg_row("  Median rel %", "median_rad_rel", fmt="{:>+.1f}"))
 print()
+
+# ---------------------------------------------------------------------------
+# Find and visualize the largest unmatched vessel in GT and in comparison
+# ---------------------------------------------------------------------------
+
+best_gt = {"sample": None, "label": None, "edge": None, "length": -1.0}
+best_paired = {"sample": None, "label": None, "edge": None, "length": -1.0}
+
+for sample_name, data in sample_data.items():
+    g_gt = data["g_gt"]
+    for lbl, (g2, fm) in data["matches"].items():
+        matched_g1, matched_g2 = set(), set()
+        for g1_edges, g2_edges in fm:
+            matched_g1.update(g1_edges)
+            matched_g2.update(g2_edges)
+
+        for e in g_gt.edges():
+            if not _is_matched(e, matched_g1):
+                length = _get_edge_attr_float(g_gt, e[0], e[1], "length")
+                if length >= filter_length and length > best_gt["length"]:
+                    best_gt = {"sample": sample_name, "label": lbl, "edge": e, "length": length}
+
+        for e in g2.edges():
+            if not _is_matched(e, matched_g2):
+                length = _get_edge_attr_float(g2, e[0], e[1], "length")
+                if length >= filter_length and length > best_paired["length"]:
+                    best_paired = {"sample": sample_name, "label": lbl, "edge": e, "length": length}
+
+print(f"\nLargest unmatched GT vessel:     sample={best_gt['sample']}  label={best_gt['label']}  edge={best_gt['edge']}  length={best_gt['length']:.2f}")
+print(f"Largest unmatched paired vessel: sample={best_paired['sample']}  label={best_paired['label']}  edge={best_paired['edge']}  length={best_paired['length']:.2f}")
+
+print("\nOpening visualization for largest unmatched GT vessel...")
+_d = sample_data[best_gt["sample"]]
+viz_final_matches(_d["g_gt"], _d["matches"][best_gt["label"]][0], _d["matches"][best_gt["label"]][1])
+
+print("Opening visualization for largest unmatched paired vessel...")
+_d = sample_data[best_paired["sample"]]
+viz_final_matches(_d["g_gt"], _d["matches"][best_paired["label"]][0], _d["matches"][best_paired["label"]][1])
+
+print(1)
