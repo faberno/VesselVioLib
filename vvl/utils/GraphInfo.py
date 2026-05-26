@@ -190,7 +190,7 @@ class GraphInfo:
                 self.vessel_depth_is_lower(x, y, z)
                 for x, y, z in original_edge_postions
             ]
-            is_lower = np.sum(locs) / len(locs)
+            is_lower = (np.sum(locs) / len(locs)) > 0.5
 
             if is_lower:
                 lower_graph.add_edge(n1, n2, **data)
@@ -290,10 +290,16 @@ class GraphInfo:
         #         verbose=True
         # )
 
-        filtered_lower = reconstruct_volume(volume, ig.Graph.from_networkx(self.lower_graph), points, self.resolution,
-                                            point_minima, use_unreduced_nodes=True) >= 0
-        filtered_upper = reconstruct_volume(volume, ig.Graph.from_networkx(self.upper_graph), points, self.resolution,
-                                            point_minima, use_unreduced_nodes=True) >= 0
+        def _reconstruct_or_empty(nx_g):
+            if nx_g.number_of_edges() == 0:
+                return np.zeros(self.filtered_vol.shape, dtype=bool)
+            return reconstruct_volume(
+                volume, ig.Graph.from_networkx(nx_g), points, self.resolution,
+                point_minima, use_unreduced_nodes=True,
+            ) >= 0
+
+        filtered_lower = _reconstruct_or_empty(self.lower_graph)
+        filtered_upper = _reconstruct_or_empty(self.upper_graph)
         self.filtered_vol_lower = filtered_lower
         self.filtered_vol_upper = filtered_upper
 
@@ -307,18 +313,25 @@ class GraphInfo:
                 os.path.join(self.output_dir, self.name + "_upper.nii.gz"),
             )
 
+    def _safe_extract(self, G, volume):
+        # Empty graph or empty volume -> return {} so the caller leaves the
+        # corresponding feature columns absent; pandas fills them as NaN.
+        if G is None or G.number_of_edges() == 0:
+            return {}
+        if volume is None or not np.any(volume):
+            return {}
+        return extract_graph_and_volume_features(
+            G=G,
+            volume=volume,
+            resolution=self.resolution,
+            large_vessel_radius=self.large_vessel_radius,
+            structure_mask=self.structure_mask,
+            normalization=self.normalize,
+        )
+
     def extract_features(self):
         assert len(self.features) == 1
-        self.features.update(
-            extract_graph_and_volume_features(
-                G=self.nx_graph,
-                volume=self.filtered_vol,
-                resolution=self.resolution,
-                large_vessel_radius=self.large_vessel_radius,
-                structure_mask=self.structure_mask,
-                normalization=self.normalize,
-            )
-        )
+        self.features.update(self._safe_extract(self.nx_graph, self.filtered_vol))
 
     def extract_features_upper_lower(self):
         print(self.name)
@@ -328,22 +341,8 @@ class GraphInfo:
         self.prune_graph_upper_lower()
         self.split_upper_lower_volume(save_vols=True)
 
-        features_upper = extract_graph_and_volume_features(
-            G=self.upper_graph.copy(),
-            volume=self.filtered_vol_upper,
-            resolution=self.resolution,
-            large_vessel_radius=self.large_vessel_radius,
-            structure_mask=self.structure_mask,
-            normalization=self.normalize,
-        )
-        features_lower = extract_graph_and_volume_features(
-            G=self.lower_graph.copy(),
-            volume=self.filtered_vol_lower,
-            resolution=self.resolution,
-            large_vessel_radius=self.large_vessel_radius,
-            structure_mask=self.structure_mask,
-            normalization=self.normalize,
-        )
+        features_upper = self._safe_extract(self.upper_graph.copy(), self.filtered_vol_upper)
+        features_lower = self._safe_extract(self.lower_graph.copy(), self.filtered_vol_lower)
 
         # append _lower and _upper suffix to corresponding dict keys
         features_upper = {

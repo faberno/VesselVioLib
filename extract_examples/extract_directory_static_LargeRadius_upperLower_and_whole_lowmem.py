@@ -41,25 +41,30 @@ def find_layseg_for_vesseg(vesseg_path, layseg_dir):
 
 def process_single_file(args):
     vesselseg_path, layerseg_path, results_folder, large_vessel_radius = args
-    g_i = GraphInfo(
-        vesselseg_path, layerseg_path,
-        resolution=resolution, filter_length=filter_length,
-        prune_length=prune_length, legacy=legacy,
-        output_dir=results_folder, depth=vp_depth, normalize=normalize,
-    )
-    g_i.large_vessel_radius = large_vessel_radius
-    g_i.extract_graph()
+    name = os.path.basename(vesselseg_path).replace(".nii.gz", "")
+    try:
+        g_i = GraphInfo(
+            vesselseg_path, layerseg_path,
+            resolution=resolution, filter_length=filter_length,
+            prune_length=prune_length, legacy=legacy,
+            output_dir=results_folder, depth=vp_depth, normalize=normalize,
+        )
+        g_i.large_vessel_radius = large_vessel_radius
+        g_i.extract_graph()
 
-    # Whole-volume features (no upper/lower split)
-    g_i.extract_features()
-    features_whole = dict(g_i.features)
+        # Whole-volume features (no upper/lower split)
+        g_i.extract_features()
+        features_whole = dict(g_i.features)
 
-    # Reset features dict so extract_features_upper_lower's assert passes
-    g_i.features = {"name": g_i.name}
-    g_i.extract_features_upper_lower()
-    features_upper_lower = dict(g_i.features)
+        # Reset features dict so extract_features_upper_lower's assert passes
+        g_i.features = {"name": g_i.name}
+        g_i.extract_features_upper_lower()
+        features_upper_lower = dict(g_i.features)
 
-    return features_whole, features_upper_lower
+        return features_whole, features_upper_lower
+    except Exception as e:
+        print(f"FAILED {name}: {e!r}")
+        return {"name": name}, {"name": name}
 
 
 if __name__ == "__main__":
@@ -78,7 +83,7 @@ if __name__ == "__main__":
     ]
 
     print(f"Extracting features with static large_vessel_radius={large_vessel_radius}...")
-    with Pool(processes=6, maxtasksperchild=1) as pool:
+    with Pool(processes=2, maxtasksperchild=1) as pool:
         results = list(tqdm(pool.imap(process_single_file, seg_paths), total=len(seg_paths)))
 
     whole_list = [r[0] for r in results]
