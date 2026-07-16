@@ -12,7 +12,29 @@ layerseg_dir = r"E:\CVD_backup\OPTOMICS_1.1-12-2348-EST_UTARTU\rsom\processed\ep
 
 filter_length = 0.250  # remove paths with a length less than this
 prune_length = 0.0  # remove connected endpoint vessels with length less than this
-large_vessel_radius = 0.020  # Static dataset-wide median (e.g. TARTU baselines)
+large_vessel_radius = 0.020  # Static dataset-wide median for arm (extracted using TARTU and german baseline scans)
+# large_vessel_radius = 0.0157  # Static dataset-wide median for leg (extracted using TARTU and german leg scans)
+# large_vessel_radius = 0.015574  # Static dataset-wide median for Foot (extracted using PLIS Foot scans)
+"""
+TARTU LEG:
+min:     0.008590
+max:     0.029254
+mean:    0.017412
+median:  0.017726   <-- use this as large_vessel_radius
+
+German Legs:
+min:     0.006982
+max:     0.036334
+mean:    0.014485
+median:  0.013647   <-- use this as large_vessel_radius
+
+PLIS LEG:
+min:     0.008856
+max:     0.019060
+mean:    0.012721
+median:  0.011714   <-- use this as large_vessel_radius Leg
+"""
+
 vp_depth = 40  # Depth at which to separate the vessels into upper and lower region
 legacy = True
 normalize = False  # If vessel signal is already cropped to normalized volume then don't need to normalize

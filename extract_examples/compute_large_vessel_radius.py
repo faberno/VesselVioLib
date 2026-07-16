@@ -14,8 +14,22 @@ import pandas as pd
 
 from vvl.utils.GraphInfo import GraphInfo
 
-vesselseg_dir = r"E:\CVD_backup\OPTOMICS_1.1-12-2348-EST_UTARTU\rsom\processed\vessel\leg"
+vesselseg_dir = r"E:\CVD_backup\PLIS\vessel\leg"
+"""
+n files: 218
+PLIS FOOT
+min:     0.009173
+max:     0.025088
+mean:    0.015486
+median:  0.015574   <-- use this as large_vessel_radius Foot
 
+
+PLIS LEG
+min:     0.008856
+max:     0.019060
+mean:    0.012721
+median:  0.011714   <-- use this as large_vessel_radius Leg
+"""
 filter_length = 0.250
 prune_length = 0.0
 legacy = True
