@@ -1,16 +1,18 @@
 import numpy as np
+import re
 
 
 def get_surface_angle(surface):
     ### angle is computed as square root of the squared x and y slopes (a and b) of a fitted plane.
     nx, ny = surface.shape
-    x, y = np.meshgrid(np.arange(ny), np.arange(nx))# coordinate grid
-    X = np.column_stack((x.ravel(), y.ravel(), np.ones(nx*ny)))# flatten
+    x, y = np.meshgrid(np.arange(ny), np.arange(nx))  # coordinate grid
+    X = np.column_stack((x.ravel(), y.ravel(), np.ones(nx * ny)))  # flatten
     Zf = surface.ravel()
-    a, b, c = np.linalg.lstsq(X, Zf, rcond=None)[0]# least squares plane fit
-    theta = np.degrees(np.arctan(np.sqrt(a*a + b*b))) #tilt angle
+    a, b, c = np.linalg.lstsq(X, Zf, rcond=None)[0]  # least squares plane fit
+    theta = np.degrees(np.arctan(np.sqrt(a * a + b * b)))  # tilt angle
     return int(theta)
- 
+
+
 def extract_int_features(
     volume_lay,
     volume_upper,
@@ -22,15 +24,15 @@ def extract_int_features(
         surface = np.argmax(volume_lay, axis=2)
         dist_transducer = np.mean(surface)
         surface_angle = get_surface_angle(surface)
- 
+
         layseg_int_max_hf = hf.max()
         layseg_int_mean_hf = hf.mean()
         layseg_int_max_lf = lf.max()
         layseg_int_mean_lf = lf.mean()
- 
+
         depth_counts = np.sum(volume_lay > 0, axis=-1)  # shape: (y, x)
         layseg_thickness = np.mean(depth_counts[depth_counts > 0])
- 
+
         return {
             "layseg_int_max_hf": layseg_int_max_hf,  ###welche einheit, warum values so groß?
             "layseg_int_mean_hf": layseg_int_mean_hf,
@@ -40,39 +42,38 @@ def extract_int_features(
             "dist_transducer [um]": int(dist_transducer * 3),
             "surface_angle": surface_angle,
         }
- 
+
     def vesseg_int_feats(lf, hf):
         vesseg_upper_int_max_hf = hf.max()
         vesseg_upper_int_mean_hf = hf.mean()
         vesseg_upper_int_max_lf = lf.max()
         vesseg_upper_int_mean_lf = lf.mean()
- 
+
         return {
             "vesseg_int_max_hf": vesseg_upper_int_max_hf,  ###welche einheit, warum values so groß?
             "vesseg_int_mean_hf": vesseg_upper_int_mean_hf,
             "vesseg_int_max_lf": vesseg_upper_int_max_lf,
             "vesseg_int_mean_lf": vesseg_upper_int_mean_lf,
         }
-   
+
     recon_lf = recon[0]
     recon_hf = recon[1]
- 
+
     volume_lay = np.array(volume_lay, dtype=np.float32)
     volume_upper = np.array(volume_upper, dtype=np.float32)
     volume_lower = np.array(volume_lower, dtype=np.float32)
- 
- 
+
     # recon_hf = np.transpose(recon_hf, axes=(1, 2, 0))
     # recon_lf = np.transpose(recon_lf, axes=(1, 2, 0))
     recon_hf = np.clip(recon_hf, 0, np.max(recon_hf))
     recon_lf = np.clip(recon_lf, 0, np.max(recon_lf))
- 
+
     features = {}
     layseg_hf = recon_hf[volume_lay == 1]
     layseg_lf = recon_lf[volume_lay == 1]
- 
+
     features.update(layseg_int_features(layseg_lf, layseg_hf, volume_lay))
- 
+
     shifted_vesseg_upp = np.zeros(recon_hf.shape, dtype=recon_hf.dtype)
     depth_map_full = volume_lay.shape[2] - np.argmax(volume_lay[..., ::-1], axis=2)
     shift = np.min(depth_map_full)
@@ -80,11 +81,9 @@ def extract_int_features(
     vesseg_upper_hf = recon_hf[shifted_vesseg_upp == 1]
     vesseg_upper_lf = recon_lf[shifted_vesseg_upp == 1]
     upper_ves_feats = vesseg_int_feats(vesseg_upper_lf, vesseg_upper_hf)
-    upper_ves_feats = {
-        k + "_upper": upper_ves_feats[k] for k in upper_ves_feats.keys()
-    }
+    upper_ves_feats = {k + "_upper": upper_ves_feats[k] for k in upper_ves_feats.keys()}
     features.update(upper_ves_feats)
- 
+
     shifted_vesseg_low = np.zeros(recon_hf.shape, dtype=recon_hf.dtype)
     depth_map_full = volume_lay.shape[2] - np.argmax(volume_lay[..., ::-1], axis=2)
     shift = np.min(depth_map_full) + upper_lower_depth
@@ -114,15 +113,24 @@ def _process_one(args):
     """Top-level (picklable) worker for multiprocessing."""
     import nibabel as nib
     from scipy.io import loadmat
+    import h5py
 
-    name, layerseg_path, upper_seg_path, lower_seg_path, recon_lf_path, recon_hf_path, depth = args
+    name, layerseg_path, upper_seg_path, lower_seg_path, recon_lf_path, recon_hf_path, depth, raw_scan_path = args
     try:
         volume_lay = nib.load(layerseg_path).get_fdata()
         volume_upper = nib.load(upper_seg_path).get_fdata()
         volume_lower = nib.load(lower_seg_path).get_fdata()
         recon_lf = np.transpose(loadmat(recon_lf_path)["R"], axes=(1, 0, 2))
         recon_hf = np.transpose(loadmat(recon_hf_path)["R"], axes=(1, 0, 2))
+        with h5py.File(raw_scan_path, "r") as f:
+            daq_range = f["aP_acq/daq_range"][()].item()
 
+        if daq_range > 0:
+            recon_lf *= daq_range / 1000
+            recon_hf *= daq_range / 1000
+        else:
+            raise ValueError(raw_scan_path, "Invalid DAQ range: ", daq_range)
+        
         feats = extract_int_features(
             volume_lay=volume_lay,
             volume_upper=volume_upper,
@@ -145,20 +153,20 @@ if __name__ == "__main__":
     import pandas as pd
     from tqdm import tqdm
 
-    vesselseg_dir = r"E:\CVD_backup\OPTOMICS_1.1-12-2348-EST_UTARTU\rsom\processed\vessel\arm"
-    layerseg_dir = r"E:\CVD_backup\OPTOMICS_1.1-12-2348-EST_UTARTU\rsom\processed\epidermis"
+    vesselseg_dir = r"E:\CVD_backup\OPTOMICS_1.1-12-2348-EST_UTARTU\rsom\processed\vessel\leg"
+    layerseg_dir = r"E:\CVD_backup\OPTOMICS_1.1-12-2348-EST_UTARTU\rsom\processed\epidermis\leg"
     recon_dir = r"\\TUMEBB1-WS1.med.tum.de\data\derived_data\OPTOMICS_1.1-12-2348-EST_UTARTU\rsom\processed\recon"
+    raw_dir = r"\\TUMEBB1-WS1.med.tum.de\data\derived_data\OPTOMICS_1.1-12-2348-EST_UTARTU\rsom\raw"
     results_folder = os.path.join(vesselseg_dir, "vesselvio")
 
     # upper_lower_depth per scan was written by the main extraction pipeline.
     ul_csv = os.path.join(results_folder, "features_upperLower.csv")
-    depth_map = dict(
-        zip(*pd.read_csv(ul_csv, usecols=["name", "upper_lower_depth"]).values.T)
-    )
+    depth_map = dict(zip(*pd.read_csv(ul_csv, usecols=["name", "upper_lower_depth"]).values.T))
 
     # Index recon + layerseg directories once so the worker doesn't re-scan them.
     layseg_index = {_clean_up_name(f): os.path.join(layerseg_dir, f) for f in os.listdir(layerseg_dir)}
     recon_files = os.listdir(recon_dir)
+    raw_folders = os.listdir(raw_dir)
 
     args_list = []
     skipped = []
@@ -167,6 +175,13 @@ if __name__ == "__main__":
             continue
         name = seg.replace(".nii.gz", "")
         base = _clean_up_name(seg)
+
+        pat_id = re.search(r"_G\d{9}_", base).group()[1:-1]
+        raw_scan_path = os.path.join(raw_dir, pat_id, (base.replace("Seg_", "S_") + ".mat"))
+
+        if not os.path.exists(raw_scan_path):
+            skipped.append((name, "no raw scan"))
+            continue
 
         if name not in depth_map or pd.isna(depth_map[name]):
             skipped.append((name, "no upper_lower_depth row"))
@@ -180,17 +195,24 @@ if __name__ == "__main__":
         if layerseg_path is None:
             skipped.append((name, "no matching layerseg"))
             continue
-        lf = next((f for f in recon_files if f.startswith(base.replace("Seg_","R_")) and f.endswith("LF.mat")), None)
-        hf = next((f for f in recon_files if f.startswith(base.replace("Seg_","R_")) and f.endswith("HF.mat")), None)
+        lf = next((f for f in recon_files if f.startswith(base.replace("Seg_", "R_")) and f.endswith("LF.mat")), None)
+        hf = next((f for f in recon_files if f.startswith(base.replace("Seg_", "R_")) and f.endswith("HF.mat")), None)
         if lf is None or hf is None:
             skipped.append((name, "no LF/HF recon"))
             continue
 
-        args_list.append((
-            name, layerseg_path, upper_seg_path, lower_seg_path,
-            os.path.join(recon_dir, lf), os.path.join(recon_dir, hf),
-            depth_map[name],
-        ))
+        args_list.append(
+            (
+                name,
+                layerseg_path,
+                upper_seg_path,
+                lower_seg_path,
+                os.path.join(recon_dir, lf),
+                os.path.join(recon_dir, hf),
+                depth_map[name],
+                raw_scan_path,
+            )
+        )
 
     if skipped:
         print(f"Skipping {len(skipped)} scans:")
@@ -201,7 +223,6 @@ if __name__ == "__main__":
     print(f"Extracting intensity features for {len(args_list)} scans using {n_workers} workers...")
     with Pool(processes=n_workers, maxtasksperchild=1) as pool:
         results = list(tqdm(pool.imap_unordered(_process_one, args_list), total=len(args_list)))
-
     # results = []
     # for ele in args_list:
     #     results.append(_process_one(ele))

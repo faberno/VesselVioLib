@@ -142,7 +142,7 @@ def extract_graph_from_volume(
 
     # Filter isolated segments that are shorter than defined length
     # If visualizing the dataset, filter these from the volume as well.
-    filter_input(graph, filter_length, resolution)
+    filter_input(graph, filter_length, resolution,verbose=True)
 
     filtered_volume = reconstruct_volume(volume, graph, points, resolution, point_minima) >= 0
 

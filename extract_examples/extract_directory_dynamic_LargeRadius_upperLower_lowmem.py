@@ -8,8 +8,8 @@ import pandas as pd
 
 from vvl.utils.GraphInfo import GraphInfo
 
-vesselseg_dir = r"E:\CVD_backup\OPTOMICS_1.1-12-2348-EST_UTARTU\rsom\processed\vessel\test"
-layerseg_dir = r"E:\CVD_backup\OPTOMICS_1.1-12-2348-EST_UTARTU\rsom\processed\epidermis"
+vesselseg_dir = r"C:\Users\erik\projects\hallucination_eval\data\i9\vessel_pred"
+layerseg_dir = r"C:\Users\erik\projects\hallucination_eval\data\lay_pred\preds003\high_res"
 
 filter_length = 0.250  # remove paths with a length less than this
 prune_length = 0.0  # remove connected endpoint vessels with length less than this
@@ -32,6 +32,7 @@ def find_layseg_for_vesseg(vesseg_path, layseg_dir):
         name = name.replace("_0001", "")
         name = name.replace("_ves.nii.gz", "")
         name = name.replace("_ed.nii.gz", "")
+        name = name.replace("_v_rgb_pred.nii.gz", "")
         name = name.replace(".nii.gz", "")
         return name
 

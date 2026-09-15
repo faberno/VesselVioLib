@@ -67,9 +67,9 @@ class GraphInfo:
     def init_layseg_info(self):
         if self.layerseg_path:
             self.layerseg_vol, _ = load_volume(self.layerseg_path)
-            # self.layerseg_vol = self.layerseg_vol.swapaxes(
-            #     0, 2
-            # )  ##TODO shape verifizieren
+            self.layerseg_vol = self.layerseg_vol.swapaxes(
+                0, 2
+            )  ##TODO shape verifizieren
             assert self.layerseg_vol.shape[0] < self.layerseg_vol.shape[2], (
                 "Layer segmentation is wider than it is deep. Probably wrong axes used"
             )
@@ -269,7 +269,10 @@ class GraphInfo:
     def split_upper_lower_volume(self, save_vols=False):
 
         def save_nii(V, path):
-            img = nib.Nifti1Image(V, np.eye(4))
+            img = nib.Nifti1Image(V, np.array([[self.resolution[0], 0., 0., 0.],
+       [0., self.resolution[1], 0., 0.],
+       [0., 0., self.resolution[2], 0.],
+       [0., 0., 0., 1.]]))
             nib.save(img, path)
         volume, point_minima, point_maxima = volume_prep(self.filtered_vol)
 
@@ -311,6 +314,10 @@ class GraphInfo:
             save_nii(
                 filtered_upper.astype(np.uint8),
                 os.path.join(self.output_dir, self.name + "_upper.nii.gz"),
+            )
+            save_nii(
+                _reconstruct_or_empty(self.nx_graph).astype(np.uint8),
+                os.path.join(self.output_dir, self.name + "_whole.nii.gz"),
             )
 
     def _safe_extract(self, G, volume):
